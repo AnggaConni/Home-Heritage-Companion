@@ -51,6 +51,7 @@ lv_obj_t *indoorLabel = nullptr;
 lv_obj_t *outdoorLabel = nullptr;
 String outdoorResult;
 String outdoorCards[4];
+String outdoorRenderedResult;
 const char *outdoorCardTitles[4] = {"Weather", "Air Quality", "Hazards", "Recommendations"};
 uint8_t outdoorCardIndex = 0;
 lv_obj_t *outdoorCard = nullptr;
@@ -341,16 +342,11 @@ void requestOutdoorData() {
 }
 
 void updateOutdoorStatus() {
-  if (outdoorFetchDone && outdoorCardBody) {
-    static bool lastRendered = false;
-    static String lastResult;
-    if (!lastRendered || lastResult != outdoorResult) {
-      buildOutdoorCards();
-      renderOutdoorCard();
-      if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
-      lastResult = outdoorResult;
-      lastRendered = true;
-    }
+  if (outdoorFetchDone && outdoorCardBody && outdoorRenderedResult != outdoorResult) {
+    buildOutdoorCards();
+    renderOutdoorCard();
+    if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
+    outdoorRenderedResult = outdoorResult;
   }
 }
 
@@ -462,6 +458,7 @@ void buildOutdoorCards() {
 void showOutdoor() {
   currentPage = Page::OUTDOOR;
   resetPageObjects();
+  outdoorRenderedResult = "";
   outdoorCard = nullptr;
   outdoorCardTitle = nullptr;
   outdoorCardBody = nullptr;
