@@ -8,6 +8,7 @@
 #include <lvgl.h>
 #include <ArduinoJson.h>
 #include <math.h>
+#include <time.h>
 #include "music_player.h"
 
 // LCDWiki ES3C28P target notes:
@@ -168,6 +169,29 @@ void updateWifiLabel() {
   }
 }
 
+String buildDateDaysAgo(int daysAgo) {
+  const char *months[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+  char monthText[4] = {0};
+  int day = 1, year = 2026, month = 0;
+  sscanf(__DATE__, "%3s %d %d", monthText, &day, &year);
+  for (int i = 0; i < 12; ++i) if (strcmp(monthText, months[i]) == 0) month = i;
+  struct tm date = {};
+  date.tm_year = year - 1900;
+  date.tm_mon = month;
+  date.tm_mday = day - daysAgo;
+  const time_t stamp = mktime(&date);
+  localtime_r(&stamp, &date);
+  char out[11];
+  strftime(out, sizeof(out), "%Y-%m-%d", &date);
+  return String(out);
+}
+
+String buildDateCompact(int daysAgo) {
+  String date = buildDateDaysAgo(daysAgo);
+  date.replace("-", "");
+  return date;
+}
+
 String fetchOutdoorApi(const String &url) {
   WiFiClientSecure client;
   client.setInsecure(); // Public APIs; HTTPS certificate validation is not provisioned in this prototype.
@@ -193,6 +217,9 @@ void outdoorFetchTask(void *) {
     constexpr double lat = -6.2088;
     constexpr double lon = 106.8456;
     const String coords = "latitude=-6.2088&longitude=106.8456";
+    const String quakeStart = buildDateDaysAgo(7);
+    const String nasaStart = buildDateCompact(12);
+    const String nasaEnd = buildDateCompact(2);
     const String weatherJson = fetchOutdoorApi(
       "https://api.open-meteo.com/v1/forecast?" + coords +
       "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&daily=precipitation_sum,uv_index_max&timezone=Asia%2FJakarta&forecast_days=1");
@@ -200,12 +227,12 @@ void outdoorFetchTask(void *) {
       "https://air-quality-api.open-meteo.com/v1/air-quality?" + coords +
       "&current=pm2_5,pm10,uv_index,ozone,nitrogen_dioxide&timezone=Asia%2FJakarta");
     const String quakeJson = fetchOutdoorApi(
-      "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=-6.2088&longitude=106.8456&maxradiuskm=100&starttime=2026-10-20&minmagnitude=2.5");
+      "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=-6.2088&longitude=106.8456&maxradiuskm=100&starttime=" + quakeStart + "&minmagnitude=2.5");
     const String floodJson = fetchOutdoorApi(
       "https://flood-api.open-meteo.com/v1/flood?" + coords +
       "&daily=river_discharge&forecast_days=7");
     const String nasaJson = fetchOutdoorApi(
-      "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN&community=RE&longitude=106.8456&latitude=-6.2088&start=20261015&end=20261025&format=JSON");
+      "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN&community=RE&longitude=106.8456&latitude=-6.2088&start=" + nasaStart + "&end=" + nasaEnd + "&format=JSON");
 
     JsonDocument weather, air, quake, flood, nasa;
     const bool haveWeather = weatherJson.length() && !deserializeJson(weather, weatherJson);
@@ -282,7 +309,8 @@ void requestOutdoorData() {
   }
   outdoorFetchRunning = true;
   outdoorFetchDone = false;
-  outdoorResult = "OUTDOOR / OURHERITAGE\nFetching live data from Open-Meteo, USGS, and NASA POWER...\nMusic and touchscreen loop remain on the main task.";
+  outdoorResult = "OUTDOOR / OURHERITAGE\nFetching live data from Open-Meteo, USGS, and NASA POWER...";
+  if (outdoorLabel) lv_label_set_text(outdoorLabel, outdoorResult.c_str());
   if (xTaskCreatePinnedToCore(outdoorFetchTask, "outdoor_api", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
     outdoorFetchRunning = false;
     outdoorResult = "Could not start API task. Please retry.";
