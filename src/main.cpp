@@ -213,6 +213,7 @@ void updateEnvironmentStatus() {
 
 void showHome();
 void showSettings();
+void showMusicPlayer();
 
 void makeBackButton() {
   lv_obj_t *back = lv_btn_create(root);
