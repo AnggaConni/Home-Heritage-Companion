@@ -40,6 +40,7 @@ lv_obj_t *wifiLabel = nullptr;
 lv_obj_t *statusLabel = nullptr;
 lv_obj_t *ssidField = nullptr;
 lv_obj_t *passwordField = nullptr;
+lv_obj_t *wifiDropdown = nullptr;
 lv_obj_t *keyboard = nullptr;
 lv_obj_t *environmentLabel = nullptr;
 lv_obj_t *heritageLabel = nullptr;
@@ -138,6 +139,7 @@ void resetPageObjects() {
   statusLabel = nullptr;
   ssidField = nullptr;
   passwordField = nullptr;
+  wifiDropdown = nullptr;
   keyboard = nullptr;
   environmentLabel = nullptr;
   heritageLabel = nullptr;
@@ -265,13 +267,20 @@ void showEnvironment() {
 
 void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t callback) {
   lv_obj_t *button = lv_btn_create(root);
-  lv_obj_set_size(button, 102, 76);
+  lv_obj_set_size(button, 142, 54);
   lv_obj_set_pos(button, x, y);
-  lv_obj_set_style_radius(button, 12, 0);
+  lv_obj_set_style_radius(button, 16, 0);
+  lv_obj_set_style_bg_color(button, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(button, 1, 0);
+  lv_obj_set_style_border_color(button, lv_color_hex(0xE2E8F0), 0);
+  lv_obj_set_style_shadow_width(button, 8, 0);
+  lv_obj_set_style_shadow_opa(button, LV_OPA_20, 0);
   lv_obj_t *label = lv_label_create(button);
   String text = String(symbol) + "\n" + title;
   lv_label_set_text(label, text.c_str());
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(0x1E293B), 0);
   lv_obj_center(label);
   lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, nullptr);
 }
@@ -280,32 +289,35 @@ void showHome() {
   currentPage = Page::HOME;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Home Companion");
+  lv_label_set_text(heading, "Home");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 10, 9);
+  lv_obj_set_style_text_color(heading, lv_color_hex(0x0F172A), 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 8);
 
   wifiLabel = lv_label_create(root);
-  lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -8, 12);
+  lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -12, 12);
   updateWifiLabel();
 
   lv_obj_t *subtitle = lv_label_create(root);
-  lv_label_set_text(subtitle, "OURHERITAGE | HOME");
-  lv_obj_set_style_text_color(subtitle, lv_color_hex(0xB45309), 0);
-  lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 12, 37);
+  lv_label_set_text(subtitle, "OURHERITAGE  ·  YOUR HOME");
+  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(subtitle, lv_color_hex(0x64748B), 0);
+  lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 14, 34);
 
-  tile("Heritage", LV_SYMBOL_HOME, 12, 66, [](lv_event_t *) { showHeritage(); });
-  tile("Music", LV_SYMBOL_AUDIO, 166, 66, [](lv_event_t *) {
+  tile("Heritage", LV_SYMBOL_HOME, 12, 58, [](lv_event_t *) { showHeritage(); });
+  tile("Music", LV_SYMBOL_AUDIO, 166, 58, [](lv_event_t *) {
     showInfoPage("Music Player",
       "MP3 playback is not enabled yet. The ES8311 audio path and microSD/SDIO interface must be verified against the ES3C28P demo before enabling playback.",
       Page::MUSIC);
   });
-  tile("Environment", "ENV", 12, 150, [](lv_event_t *) { showEnvironment(); });
-  tile("Settings", LV_SYMBOL_SETTINGS, 166, 150, [](lv_event_t *) { showSettings(); });
+  tile("Environment", "ENV", 12, 124, [](lv_event_t *) { showEnvironment(); });
+  tile("Settings", LV_SYMBOL_SETTINGS, 166, 124, [](lv_event_t *) { showSettings(); });
 
   lv_obj_t *footer = lv_label_create(root);
   lv_label_set_text(footer, "Local device | Wi-Fi when available");
   lv_obj_set_style_text_color(footer, lv_color_hex(0x64748B), 0);
-  lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -10);
+  lv_obj_set_style_text_font(footer, &lv_font_montserrat_12, 0);
+  lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
 
 void keyboardEvent(lv_event_t *event) {
@@ -323,6 +335,49 @@ void textareaFocused(lv_event_t *event) {
   lv_keyboard_set_textarea(keyboard, textarea);
   lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(keyboard);
+}
+
+void handleWifiScan(lv_event_t *) {
+  if (statusLabel) setStatus("Scanning nearby Wi-Fi networks...", 0x2563EB);
+  WiFi.mode(WIFI_STA);
+  const int count = WiFi.scanNetworks(false, true);
+  String options;
+  for (int i = 0; i < count; ++i) {
+    String name = WiFi.SSID(i);
+    if (name.isEmpty()) name = "(Hidden network)";
+    // Dropdown options are newline-separated; remove embedded line breaks.
+    name.replace("\\n", " ");
+    name.replace("\\r", " ");
+    if (options.length()) options += "\\n";
+    options += name;
+  }
+  if (!wifiDropdown) return;
+  if (count <= 0) {
+    lv_dropdown_set_options(wifiDropdown, "No networks found");
+    if (statusLabel) setStatus("No networks found. Try scanning again.", 0xDC2626);
+  } else {
+    lv_dropdown_set_options(wifiDropdown, options.c_str());
+    lv_dropdown_set_selected(wifiDropdown, 0);
+    if (ssidField) {
+      String selected = WiFi.SSID(0);
+      lv_textarea_set_text(ssidField, selected.c_str());
+    }
+    if (statusLabel) {
+      String msg = "Found " + String(count) + " networks. Choose one from the list.";
+      setStatus(msg.c_str(), 0x16A34A);
+    }
+  }
+  WiFi.scanDelete();
+}
+
+void handleWifiSelect(lv_event_t *) {
+  if (!wifiDropdown || !ssidField) return;
+  char selected[33] = {0};
+  lv_dropdown_get_selected_str(wifiDropdown, selected, sizeof(selected));
+  if (strcmp(selected, "No networks found") != 0 &&
+      strcmp(selected, "(Hidden network)") != 0) {
+    lv_textarea_set_text(ssidField, selected);
+  }
 }
 
 void handleConnect(lv_event_t *) {
@@ -357,21 +412,35 @@ void showSettings() {
   ssidField = lv_textarea_create(root);
   lv_textarea_set_one_line(ssidField, true);
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
-  lv_obj_set_size(ssidField, SCREEN_W - 24, 38);
-  lv_obj_align(ssidField, LV_ALIGN_TOP_LEFT, 12, 48);
+  lv_obj_set_size(ssidField, 142, 32);
+  lv_obj_align(ssidField, LV_ALIGN_TOP_LEFT, 12, 42);
   lv_obj_add_event_cb(ssidField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
   passwordField = lv_textarea_create(root);
   lv_textarea_set_one_line(passwordField, true);
   lv_textarea_set_password_mode(passwordField, true);
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
-  lv_obj_set_size(passwordField, SCREEN_W - 24, 38);
-  lv_obj_align(passwordField, LV_ALIGN_TOP_LEFT, 12, 96);
+  lv_obj_set_size(passwordField, 142, 32);
+  lv_obj_align(passwordField, LV_ALIGN_TOP_LEFT, 166, 42);
   lv_obj_add_event_cb(passwordField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
+  lv_obj_t *scanButton = lv_btn_create(root);
+  lv_obj_set_size(scanButton, 142, 32);
+  lv_obj_align(scanButton, LV_ALIGN_TOP_LEFT, 12, 84);
+  lv_obj_t *scanLabel = lv_label_create(scanButton);
+  lv_label_set_text(scanLabel, LV_SYMBOL_REFRESH " Scan Wi-Fi");
+  lv_obj_center(scanLabel);
+  lv_obj_add_event_cb(scanButton, handleWifiScan, LV_EVENT_CLICKED, nullptr);
+
+  wifiDropdown = lv_dropdown_create(root);
+  lv_dropdown_set_options(wifiDropdown, "Tap Scan Wi-Fi");
+  lv_obj_set_size(wifiDropdown, 142, 32);
+  lv_obj_align(wifiDropdown, LV_ALIGN_TOP_LEFT, 166, 84);
+  lv_obj_add_event_cb(wifiDropdown, handleWifiSelect, LV_EVENT_VALUE_CHANGED, nullptr);
+
   lv_obj_t *connectButton = lv_btn_create(root);
-  lv_obj_set_size(connectButton, SCREEN_W - 24, 34);
-  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 138);
+  lv_obj_set_size(connectButton, SCREEN_W - 24, 32);
+  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 126);
   lv_obj_t *connectLabel = lv_label_create(connectButton);
   lv_label_set_text(connectLabel, "Save & Connect");
   lv_obj_center(connectLabel);
@@ -381,10 +450,10 @@ void showSettings() {
   lv_label_set_text(statusLabel, "Wi-Fi credentials are stored locally on this device.");
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, SCREEN_W - 24);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 178);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 166);
 
   keyboard = lv_keyboard_create(root);
-  lv_obj_set_size(keyboard, SCREEN_W, 90);
+  lv_obj_set_size(keyboard, SCREEN_W, 84);
   lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(keyboard, keyboardEvent, LV_EVENT_ALL, nullptr);
