@@ -790,7 +790,8 @@ void showSettings() {
   currentPage = Page::SETTINGS;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Wi-Fi Settings");
+  lv_label_set_text(heading, LV_SYMBOL_SETTINGS " SETTINGS");
+  lv_obj_set_style_text_color(heading, lv_color_hex(0x38BDF8), 0);
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
   lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 8);
 
@@ -798,6 +799,9 @@ void showSettings() {
   lv_textarea_set_one_line(ssidField, true);
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
   lv_obj_set_size(ssidField, 142, 32);
+  lv_obj_set_style_bg_color(ssidField, lv_color_hex(0x172033), 0);
+  lv_obj_set_style_text_color(ssidField, lv_color_hex(0xF1F5F9), 0);
+  lv_obj_set_style_border_color(ssidField, lv_color_hex(0x334155), 0);
   lv_obj_align(ssidField, LV_ALIGN_TOP_LEFT, 12, 42);
   lv_obj_add_event_cb(ssidField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
@@ -806,6 +810,9 @@ void showSettings() {
   lv_textarea_set_password_mode(passwordField, true);
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
   lv_obj_set_size(passwordField, 142, 32);
+  lv_obj_set_style_bg_color(passwordField, lv_color_hex(0x172033), 0);
+  lv_obj_set_style_text_color(passwordField, lv_color_hex(0xF1F5F9), 0);
+  lv_obj_set_style_border_color(passwordField, lv_color_hex(0x334155), 0);
   lv_obj_align(passwordField, LV_ALIGN_TOP_LEFT, 166, 42);
   lv_obj_add_event_cb(passwordField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
@@ -818,6 +825,8 @@ void showSettings() {
 
   lv_obj_t *scanButton = lv_btn_create(root);
   lv_obj_set_size(scanButton, 142, 32);
+  lv_obj_set_style_radius(scanButton, 9, 0);
+  lv_obj_set_style_bg_color(scanButton, lv_color_hex(0x334155), 0);
   lv_obj_align(scanButton, LV_ALIGN_TOP_LEFT, 12, 108);
   lv_obj_t *scanLabel = lv_label_create(scanButton);
   lv_label_set_text(scanLabel, LV_SYMBOL_REFRESH " Scan Wi-Fi");
@@ -827,11 +836,16 @@ void showSettings() {
   wifiDropdown = lv_dropdown_create(root);
   lv_dropdown_set_options(wifiDropdown, "Tap Scan Wi-Fi");
   lv_obj_set_size(wifiDropdown, 142, 32);
+  lv_obj_set_style_bg_color(wifiDropdown, lv_color_hex(0x172033), 0);
+  lv_obj_set_style_text_color(wifiDropdown, lv_color_hex(0xF1F5F9), 0);
+  lv_obj_set_style_border_color(wifiDropdown, lv_color_hex(0x334155), 0);
   lv_obj_align(wifiDropdown, LV_ALIGN_TOP_LEFT, 166, 108);
   lv_obj_add_event_cb(wifiDropdown, handleWifiSelect, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t *connectButton = lv_btn_create(root);
   lv_obj_set_size(connectButton, SCREEN_W - 24, 30);
+  lv_obj_set_style_radius(connectButton, 9, 0);
+  lv_obj_set_style_bg_color(connectButton, lv_color_hex(0x0E7490), 0);
   lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 146);
   lv_obj_t *connectLabel = lv_label_create(connectButton);
   lv_label_set_text(connectLabel, "Save & Connect");
@@ -840,6 +854,7 @@ void showSettings() {
 
   statusLabel = lv_label_create(root);
   lv_label_set_text(statusLabel, "Wi-Fi credentials are stored locally on this device.");
+  lv_obj_set_style_text_color(statusLabel, lv_color_hex(0xCBD5E1), 0);
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, SCREEN_W - 24);
   lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 182);
@@ -852,6 +867,8 @@ void showSettings() {
   // Keep Back in the header so it never collides with status text or keyboard.
   lv_obj_t *backButton = lv_btn_create(root);
   lv_obj_set_size(backButton, 68, 30);
+  lv_obj_set_style_radius(backButton, 8, 0);
+  lv_obj_set_style_bg_color(backButton, lv_color_hex(0x334155), 0);
   lv_obj_align(backButton, LV_ALIGN_TOP_RIGHT, -8, 7);
   lv_obj_t *backLabel = lv_label_create(backButton);
   lv_label_set_text(backLabel, LV_SYMBOL_LEFT " Back");
