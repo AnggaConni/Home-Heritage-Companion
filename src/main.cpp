@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <Preferences.h>
 #include <TFT_eSPI.h>
 #include <lvgl.h>
@@ -44,8 +46,11 @@ lv_obj_t *passwordField = nullptr;
 lv_obj_t *showPasswordToggle = nullptr;
 lv_obj_t *wifiDropdown = nullptr;
 lv_obj_t *keyboard = nullptr;
-lv_obj_t *environmentLabel = nullptr;
-lv_obj_t *heritageLabel = nullptr;
+lv_obj_t *indoorLabel = nullptr;
+lv_obj_t *outdoorLabel = nullptr;
+String outdoorResult;
+volatile bool outdoorFetchRunning = false;
+volatile bool outdoorFetchDone = false;
 
 uint32_t lastWifiTry = 0;
 uint32_t lastUiRefresh = 0;
@@ -57,7 +62,7 @@ volatile bool wifiGotIpEvent = false;
 volatile bool wifiDisconnectedEvent = false;
 volatile uint8_t wifiDisconnectReason = 0;
 
-enum class Page : uint8_t { HOME, HERITAGE, MUSIC, ENVIRONMENT, SETTINGS };
+enum class Page : uint8_t { HOME, OUTDOOR, MUSIC, INDOOR, SETTINGS };
 Page currentPage = Page::HOME;
 
 struct Telemetry {
@@ -146,8 +151,8 @@ void resetPageObjects() {
   showPasswordToggle = nullptr;
   wifiDropdown = nullptr;
   keyboard = nullptr;
-  environmentLabel = nullptr;
-  heritageLabel = nullptr;
+  indoorLabel = nullptr;
+  outdoorLabel = nullptr;
   lv_obj_clean(root);
 }
 
@@ -163,40 +168,149 @@ void updateWifiLabel() {
   }
 }
 
-void updateHeritageStatus() {
-  if (!heritageLabel) return;
-  if (WiFi.status() == WL_CONNECTED) {
-    lv_label_set_text(heritageLabel,
-      "Network: online\n\nDevice is connected to Wi-Fi. The OurHeritage content API/cache adapter is the next software milestone; this firmware does not claim to have synced content yet.");
+String fetchOutdoorApi(const String &url) {
+  WiFiClientSecure client;
+  client.setInsecure(); // Public APIs; HTTPS certificate validation is not provisioned in this prototype.
+  HTTPClient http;
+  http.setConnectTimeout(4000);
+  http.setTimeout(4500);
+  String payload;
+  if (http.begin(client, url)) {
+    const int code = http.GET();
+    if (code == HTTP_CODE_OK) payload = http.getString();
+    else Serial.printf("[outdoor] HTTP %d: %s\n", code, url.c_str());
+    http.end();
+  }
+  return payload;
+}
+
+void outdoorFetchTask(void *) {
+  String result;
+  if (WiFi.status() != WL_CONNECTED) {
+    result = "Outdoor / OurHeritage\nWi-Fi is offline.\nConnect in Settings to retrieve live API data.";
   } else {
-    lv_label_set_text(heritageLabel,
-      "Network: offline\n\nThe device can still show locally received sensor telemetry. OurHeritage offline content storage/sync has not been implemented in this firmware version.");
+    // Default demonstration location: Jakarta. Site-specific coordinates can be added later.
+    constexpr double lat = -6.2088;
+    constexpr double lon = 106.8456;
+    const String coords = "latitude=-6.2088&longitude=106.8456";
+    const String weatherJson = fetchOutdoorApi(
+      "https://api.open-meteo.com/v1/forecast?" + coords +
+      "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&daily=precipitation_sum,uv_index_max&timezone=Asia%2FJakarta&forecast_days=1");
+    const String airJson = fetchOutdoorApi(
+      "https://air-quality-api.open-meteo.com/v1/air-quality?" + coords +
+      "&current=pm2_5,pm10,uv_index,ozone,nitrogen_dioxide&timezone=Asia%2FJakarta");
+    const String quakeJson = fetchOutdoorApi(
+      "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=-6.2088&longitude=106.8456&maxradiuskm=100&starttime=2026-10-20&minmagnitude=2.5");
+    const String floodJson = fetchOutdoorApi(
+      "https://flood-api.open-meteo.com/v1/flood?" + coords +
+      "&daily=river_discharge&forecast_days=7");
+    const String nasaJson = fetchOutdoorApi(
+      "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN&community=RE&longitude=106.8456&latitude=-6.2088&start=20261015&end=20261025&format=JSON");
+
+    JsonDocument weather, air, quake, flood, nasa;
+    const bool haveWeather = weatherJson.length() && !deserializeJson(weather, weatherJson);
+    const bool haveAir = airJson.length() && !deserializeJson(air, airJson);
+    const bool haveQuake = quakeJson.length() && !deserializeJson(quake, quakeJson);
+    const bool haveFlood = floodJson.length() && !deserializeJson(flood, floodJson);
+    const bool haveNasa = nasaJson.length() && !deserializeJson(nasa, nasaJson);
+
+    result = "OUTDOOR / OURHERITAGE\nJakarta | Live public APIs\n";
+    float temp = NAN, rh = NAN, rain = NAN, wind = NAN, pm25 = NAN, uv = NAN, discharge = NAN, solar = NAN;
+    int quakes = -1;
+    if (haveWeather) {
+      temp = weather["current"]["temperature_2m"] | NAN;
+      rh = weather["current"]["relative_humidity_2m"] | NAN;
+      rain = weather["current"]["precipitation"] | NAN;
+      wind = weather["current"]["wind_speed_10m"] | NAN;
+    }
+    if (haveAir) {
+      pm25 = air["current"]["pm2_5"] | NAN;
+      uv = air["current"]["uv_index"] | NAN;
+    }
+    if (haveQuake) quakes = quake["metadata"]["count"] | 0;
+    if (haveFlood) {
+      JsonArray values = flood["daily"]["river_discharge"].as<JsonArray>();
+      for (JsonVariant v : values) {
+        float n = v | NAN;
+        if (!isnan(n) && (isnan(discharge) || n > discharge)) discharge = n;
+      }
+    }
+    if (haveNasa) {
+      JsonObject values = nasa["properties"]["parameter"]["ALLSKY_SFC_SW_DWN"].as<JsonObject>();
+      for (JsonPair kv : values) {
+        float n = kv.value().as<float>();
+        if (n >= 0 && (isnan(solar) || n > solar)) solar = n;
+      }
+    }
+    result += "Temp: " + (isnan(temp) ? String("--") : String(temp, 1) + " C");
+    result += " | RH: " + (isnan(rh) ? String("--") : String(rh, 0) + "%") + "\n";
+    result += "Rain now: " + (isnan(rain) ? String("--") : String(rain, 1) + " mm");
+    result += " | Wind: " + (isnan(wind) ? String("--") : String(wind, 1) + " km/h") + "\n";
+    result += "PM2.5: " + (isnan(pm25) ? String("--") : String(pm25, 1) + " ug/m3");
+    result += " | UV: " + (isnan(uv) ? String("--") : String(uv, 1)) + "\n";
+    result += "Quakes M2.5+ within 100 km / 7 days: " + String(quakes < 0 ? 0 : quakes) + "\n";
+    result += "Flood river discharge peak (7d): " + (isnan(discharge) ? String("unavailable") : String(discharge, 1) + " m3/s") + "\n";
+    result += "NASA POWER solar radiation peak: " + (isnan(solar) ? String("unavailable") : String(solar, 1) + " kWh/m2/day") + "\n";
+    result += "\nCONSERVATION RECOMMENDATIONS\n";
+    if (!haveWeather && !haveAir) {
+      result += "- Weather/Air APIs unavailable; retry when internet is stable.\n";
+    } else {
+      if (!isnan(rh) && rh >= 75) result += "- High outdoor humidity: inspect indoor RH, improve moisture control, and check for condensation/mould.\n";
+      if (!isnan(rh) && rh < 40) result += "- Low outdoor RH: monitor sensitive organic materials; do not adjust indoor humidity from outdoor data alone.\n";
+      if (!isnan(pm25) && pm25 >= 25) result += "- Elevated PM2.5: keep vulnerable collections protected; inspect seals/filters and avoid drawing polluted outdoor air indoors.\n";
+      if (!isnan(rain) && rain >= 2) result += "- Rain detected: inspect roof, drainage, leaks, and water ingress near the heritage site.\n";
+      if (!isnan(wind) && wind >= 30) result += "- Strong wind: inspect temporary structures, loose roofing, trees, and exposed site elements.\n";
+      if (!isnan(uv) && uv >= 6) result += "- High UV: reduce direct sunlight exposure for light-sensitive collections.\n";
+      if (quakes > 0) result += "- Recent nearby earthquakes: check for new cracks, falling hazards, and structural changes; follow local authority guidance.\n";
+      if (isnan(rh) || isnan(pm25) || isnan(rain)) result += "- Some indicators are unavailable; check API connectivity and refresh.\n";
+      result += "- These are outdoor proxies, not indoor sensor readings or official emergency alerts.\n";
+    }
+    result += "\nSources: Open-Meteo Weather/Air/Flood, USGS, NASA POWER.";
+  }
+  outdoorResult = result;
+  outdoorFetchDone = true;
+  outdoorFetchRunning = false;
+  vTaskDelete(nullptr);
+}
+
+void requestOutdoorData() {
+  if (outdoorFetchRunning) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    outdoorResult = "OUTDOOR / OURHERITAGE\nWi-Fi is offline.\nConnect in Settings, then return to Outdoor.";
+    outdoorFetchDone = true;
+    return;
+  }
+  outdoorFetchRunning = true;
+  outdoorFetchDone = false;
+  outdoorResult = "OUTDOOR / OURHERITAGE\nFetching live data from Open-Meteo, USGS, and NASA POWER...\nMusic and touchscreen loop remain on the main task.";
+  if (xTaskCreatePinnedToCore(outdoorFetchTask, "outdoor_api", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
+    outdoorFetchRunning = false;
+    outdoorResult = "Could not start API task. Please retry.";
+    outdoorFetchDone = true;
   }
 }
 
-void updateEnvironmentStatus() {
-  if (!environmentLabel) return;
+void updateOutdoorStatus() {
+  if (outdoorLabel && outdoorFetchDone) {
+    lv_label_set_text(outdoorLabel, outdoorResult.c_str());
+  }
+}
+
+void updateIndoorStatus() {
+  if (!indoorLabel) return;
   if (!loraEnabled) {
-    lv_label_set_text(environmentLabel,
-      "LoRa receiver: not configured\n\nThe UART receiver and JSON telemetry parser are included, but radio RX/TX GPIOs are disabled until the actual wiring is verified. No sensor values are fabricated.");
+    lv_label_set_text(indoorLabel,
+      "INDOOR / MOCHI\n\nDemo mode — dummy values only.\nLoRa receiver is not configured yet.\n\nTemperature: 26.4 C\nHumidity: 58%\neCO2: --\nTVOC: --\nLight: --\n\nConnect the Mochi LoRa node and enable verified UART pins to replace these demo values with live sensor telemetry.");
     return;
   }
   if (!telemetry.received) {
-    lv_label_set_text(environmentLabel,
-      "LoRa receiver: listening\n\nWaiting for a newline-terminated JSON telemetry packet from the Mochi slave...");
+    lv_label_set_text(indoorLabel, "INDOOR / MOCHI\nLoRa receiver listening.\nWaiting for a valid telemetry packet...");
     return;
   }
-
   const uint32_t age = (millis() - telemetry.lastPacketAt) / 1000;
-  String text = "Node: ";
+  String text = "INDOOR / MOCHI\nNode: ";
   text += telemetry.node;
-  text += "\nSequence: ";
-  text += String(telemetry.sequence);
-  text += "\nLast packet: ";
-  text += String(age);
-  text += " s ago";
-  if (age > TELEMETRY_STALE_MS / 1000) text += " (STALE)";
-  text += "\n\nTemperature: ";
+  text += "\nLast packet: " + String(age) + " s ago\nTemperature: ";
   text += telemetry.hasTemperature ? String(telemetry.temperatureC, 1) + " C" : "--";
   text += "\nHumidity: ";
   text += telemetry.hasHumidity ? String(telemetry.humidityPct, 1) + " %" : "--";
@@ -206,9 +320,7 @@ void updateEnvironmentStatus() {
   text += telemetry.hasTvoc ? String(telemetry.tvocPpb) + " ppb" : "--";
   text += "\nLight: ";
   text += telemetry.hasLux ? String(telemetry.lux, 1) + " lux" : "--";
-  text += "\nUV raw: ";
-  text += telemetry.hasUvRaw ? String(telemetry.uvRaw) : "--";
-  lv_label_set_text(environmentLabel, text.c_str());
+  lv_label_set_text(indoorLabel, text.c_str());
 }
 
 void showHome();
@@ -241,33 +353,45 @@ void showInfoPage(const char *title, const char *body, Page page) {
   makeBackButton();
 }
 
-void showHeritage() {
-  currentPage = Page::HERITAGE;
+void showOutdoor() {
+  currentPage = Page::OUTDOOR;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "OurHeritage");
-  lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 10);
-  heritageLabel = lv_label_create(root);
-  lv_label_set_long_mode(heritageLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(heritageLabel, SCREEN_W - 24);
-  lv_obj_align(heritageLabel, LV_ALIGN_TOP_LEFT, 12, 52);
-  updateHeritageStatus();
+  lv_label_set_text(heading, "Outdoor / OurHeritage");
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 8);
+  outdoorLabel = lv_label_create(root);
+  lv_label_set_long_mode(outdoorLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(outdoorLabel, SCREEN_W - 20);
+  lv_obj_set_height(outdoorLabel, 166);
+  lv_obj_set_scrollbar_mode(outdoorLabel, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_align(outdoorLabel, LV_ALIGN_TOP_LEFT, 10, 34);
+  lv_label_set_text(outdoorLabel, "Outdoor / OurHeritage\nPreparing live API data...");
+  lv_obj_t *refresh = lv_btn_create(root);
+  lv_obj_set_size(refresh, 92, 30);
+  lv_obj_align(refresh, LV_ALIGN_BOTTOM_RIGHT, -12, -8);
+  lv_obj_t *refreshLabel = lv_label_create(refresh);
+  lv_label_set_text(refreshLabel, "Refresh");
+  lv_obj_center(refreshLabel);
+  lv_obj_add_event_cb(refresh, [](lv_event_t *) { requestOutdoorData(); }, LV_EVENT_CLICKED, nullptr);
+  requestOutdoorData();
   makeBackButton();
 }
 
-void showEnvironment() {
-  currentPage = Page::ENVIRONMENT;
+void showIndoor() {
+  currentPage = Page::INDOOR;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Environment / Mochi");
+  lv_label_set_text(heading, "Indoor / Mochi");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 10);
-  environmentLabel = lv_label_create(root);
-  lv_label_set_long_mode(environmentLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(environmentLabel, SCREEN_W - 20);
-  lv_obj_align(environmentLabel, LV_ALIGN_TOP_LEFT, 10, 42);
-  updateEnvironmentStatus();
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 8);
+  indoorLabel = lv_label_create(root);
+  lv_label_set_long_mode(indoorLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(indoorLabel, SCREEN_W - 20);
+  lv_obj_set_height(indoorLabel, 174);
+  lv_obj_set_scrollbar_mode(indoorLabel, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_align(indoorLabel, LV_ALIGN_TOP_LEFT, 10, 34);
+  updateIndoorStatus();
   makeBackButton();
 }
 
@@ -310,9 +434,9 @@ void showHome() {
   lv_obj_set_style_text_color(subtitle, lv_color_hex(0x64748B), 0);
   lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 14, 34);
 
-  tile("Heritage", LV_SYMBOL_HOME, 12, 58, [](lv_event_t *) { showHeritage(); });
+  tile("Outdoor", LV_SYMBOL_HOME, 12, 58, [](lv_event_t *) { showOutdoor(); });
   tile("Music", LV_SYMBOL_AUDIO, 166, 58, [](lv_event_t *) { showMusicPlayer(); });
-  tile("Environment", "ENV", 12, 124, [](lv_event_t *) { showEnvironment(); });
+  tile("Indoor", "MOCHI", 12, 124, [](lv_event_t *) { showIndoor(); });
   tile("Settings", LV_SYMBOL_SETTINGS, 166, 124, [](lv_event_t *) { showSettings(); });
 
   lv_obj_t *footer = lv_label_create(root);
@@ -710,7 +834,7 @@ void loop() {
     String connected = "Connected! IP: " + WiFi.localIP().toString();
     setStatus(connected.c_str(), 0x16A34A);
     updateWifiLabel();
-    updateHeritageStatus();
+    updateOutdoorStatus();
   }
   if (wifiDisconnectedEvent) {
     wifiDisconnectedEvent = false;
@@ -751,8 +875,8 @@ void loop() {
   if (now - lastUiRefresh >= UI_REFRESH_MS) {
     lastUiRefresh = now;
     updateWifiLabel();
-    if (currentPage == Page::HERITAGE) updateHeritageStatus();
-    if (currentPage == Page::ENVIRONMENT) updateEnvironmentStatus();
+    if (currentPage == Page::OUTDOOR) updateOutdoorStatus();
+    if (currentPage == Page::INDOOR) updateIndoorStatus();
   }
-  delay(5);
+  delay(1);
 }
