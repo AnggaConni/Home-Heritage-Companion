@@ -354,9 +354,9 @@ void handleWifiScan(lv_event_t *) {
     String name = WiFi.SSID(i);
     if (name.isEmpty()) name = "(Hidden network)";
     // Dropdown options are newline-separated; remove embedded line breaks.
-    name.replace("\\n", " ");
-    name.replace("\\r", " ");
-    if (options.length()) options += "\\n";
+    name.replace("\n", " ");
+    name.replace("\r", " ");
+    if (options.length()) options += "\n";
     options += name;
   }
   if (!wifiDropdown) return;
@@ -441,7 +441,7 @@ void showSettings() {
 
   lv_obj_t *scanButton = lv_btn_create(root);
   lv_obj_set_size(scanButton, 142, 32);
-  lv_obj_align(scanButton, LV_ALIGN_TOP_LEFT, 12, 84);
+  lv_obj_align(scanButton, LV_ALIGN_TOP_LEFT, 12, 108);
   lv_obj_t *scanLabel = lv_label_create(scanButton);
   lv_label_set_text(scanLabel, LV_SYMBOL_REFRESH " Scan Wi-Fi");
   lv_obj_center(scanLabel);
@@ -450,12 +450,12 @@ void showSettings() {
   wifiDropdown = lv_dropdown_create(root);
   lv_dropdown_set_options(wifiDropdown, "Tap Scan Wi-Fi");
   lv_obj_set_size(wifiDropdown, 142, 32);
-  lv_obj_align(wifiDropdown, LV_ALIGN_TOP_LEFT, 166, 84);
+  lv_obj_align(wifiDropdown, LV_ALIGN_TOP_LEFT, 166, 108);
   lv_obj_add_event_cb(wifiDropdown, handleWifiSelect, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t *connectButton = lv_btn_create(root);
   lv_obj_set_size(connectButton, SCREEN_W - 24, 30);
-  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 124);
+  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 146);
   lv_obj_t *connectLabel = lv_label_create(connectButton);
   lv_label_set_text(connectLabel, "Save & Connect");
   lv_obj_center(connectLabel);
@@ -465,14 +465,21 @@ void showSettings() {
   lv_label_set_text(statusLabel, "Wi-Fi credentials are stored locally on this device.");
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, SCREEN_W - 24);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 158);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 182);
 
   keyboard = lv_keyboard_create(root);
   lv_obj_set_size(keyboard, SCREEN_W, 84);
   lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(keyboard, keyboardEvent, LV_EVENT_ALL, nullptr);
-  makeBackButton();
+  // Keep Back in the header so it never collides with status text or keyboard.
+  lv_obj_t *backButton = lv_btn_create(root);
+  lv_obj_set_size(backButton, 68, 30);
+  lv_obj_align(backButton, LV_ALIGN_TOP_RIGHT, -8, 7);
+  lv_obj_t *backLabel = lv_label_create(backButton);
+  lv_label_set_text(backLabel, LV_SYMBOL_LEFT " Back");
+  lv_obj_center(backLabel);
+  lv_obj_add_event_cb(backButton, [](lv_event_t *) { showHome(); }, LV_EVENT_CLICKED, nullptr);
 
   prefs.begin("hhc-wifi", true);
   const String savedSsid = prefs.getString("ssid", "");
