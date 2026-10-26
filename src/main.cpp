@@ -93,6 +93,17 @@ struct Telemetry {
   uint32_t lastPacketAt = 0;
 } telemetry;
 
+void printMemoryStatus(const char *phase) {
+  Serial.printf(
+    "[MEM][%s] heap_free=%u heap_largest=%u psram_total=%u psram_free=%u\n",
+    phase,
+    static_cast<unsigned>(ESP.getFreeHeap()),
+    static_cast<unsigned>(ESP.getMaxAllocHeap()),
+    static_cast<unsigned>(ESP.getPsramSize()),
+    static_cast<unsigned>(ESP.getFreePsram())
+  );
+}
+
 char loraLine[LORA_LINE_MAX];
 size_t loraLineLength = 0;
 bool loraEnabled = false;
@@ -973,6 +984,7 @@ void setupLoRa() {
 void setup() {
   Serial.begin(115200);
   delay(200);
+  printMemoryStatus("startup");
   Serial.println("\nHome Heritage Companion starting");
 
   pinMode(TOUCH_RST, OUTPUT);
@@ -1090,6 +1102,14 @@ void loop() {
   }
 
   const uint32_t now = millis();
+  // Low-frequency diagnostics let us compare memory during playback without
+  // flooding Serial and adding avoidable work to the real-time audio loop.
+  static uint32_t lastMemoryLog = 0;
+  if (now - lastMemoryLog >= 15000) {
+    lastMemoryLog = now;
+    printMemoryStatus(currentPage == Page::MUSIC ? "music" : "runtime");
+  }
+
   if (wifiConfigured && WiFi.status() != WL_CONNECTED &&
       now - lastWifiTry >= WIFI_RETRY_MS) {
     lastWifiTry = now;
