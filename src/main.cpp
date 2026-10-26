@@ -54,6 +54,7 @@ bool wifiConfigured = false;
 bool wifiScanInProgress = false;
 volatile bool wifiGotIpEvent = false;
 volatile bool wifiDisconnectedEvent = false;
+volatile uint8_t wifiDisconnectReason = 0;
 
 enum class Page : uint8_t { HOME, HERITAGE, MUSIC, ENVIRONMENT, SETTINGS };
 Page currentPage = Page::HOME;
@@ -671,11 +672,14 @@ void setup() {
   lv_indev_drv_register(&inputDriver);
   root = lv_scr_act();
 
-  WiFi.onEvent([](WiFiEvent_t event) {
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
       wifiGotIpEvent = true;
     } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      wifiDisconnectReason = info.wifi_sta_disconnected.reason;
       wifiDisconnectedEvent = true;
+      Serial.printf("Wi-Fi disconnected, reason=%u\n",
+                    static_cast<unsigned>(wifiDisconnectReason));
     }
   });
 
@@ -703,9 +707,28 @@ void loop() {
   }
   if (wifiDisconnectedEvent) {
     wifiDisconnectedEvent = false;
-    Serial.println("Wi-Fi disconnected.");
+    const uint8_t reason = wifiDisconnectReason;
+    Serial.printf("Wi-Fi disconnected, reason=%u\n", static_cast<unsigned>(reason));
     if (currentPage == Page::SETTINGS && wifiConfigured) {
-      setStatus("Not connected yet. Check password or signal, then retry.", 0xDC2626);
+      const char *message = "Connection failed. Check router and password.";
+      switch (reason) {
+        case WIFI_REASON_NO_AP_FOUND:
+          message = "Network not found. Check SSID and router range.";
+          break;
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+          message = "Authentication failed. Recheck Wi-Fi password.";
+          break;
+        case WIFI_REASON_ASSOC_FAIL:
+          message = "Router rejected connection. Check router security.";
+          break;
+        case WIFI_REASON_BEACON_TIMEOUT:
+          message = "Signal lost. Move closer to the router.";
+          break;
+        default:
+          break;
+      }
+      setStatus(message, 0xDC2626);
     }
     updateWifiLabel();
     updateHeritageStatus();
