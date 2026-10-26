@@ -26,6 +26,7 @@ int selectedTrack = -1;
 bool sdReady = false;
 bool codecReady = false;
 bool playing = false;
+bool paused = false;
 uint8_t volumePercent = 40;
 
 lv_obj_t *statusLabel = nullptr;
@@ -141,6 +142,7 @@ void startSelected() {
   const String path = tracks[selectedTrack];
   audio.connecttoFS(SD_MMC, path.c_str());
   playing = true;
+  paused = false;
   if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
   refreshTitle();
   setStatus("Opening track from microSD...", 0x16A34A);
@@ -160,9 +162,9 @@ void onTrackChanged(lv_event_t *) {
 void onPlay(lv_event_t *) {
   if (playing) {
     audio.pauseResume();
-    playing = false;
-    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
-    setStatus("Paused");
+    paused = !paused;
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), paused ? "Play" : "Pause");
+    setStatus(paused ? "Paused" : "Playing from microSD", 0x16A34A);
   } else {
     startSelected();
   }
