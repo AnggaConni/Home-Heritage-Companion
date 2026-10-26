@@ -216,6 +216,9 @@ String fetchOutdoorApi(const String &url) {
   return payload;
 }
 
+void buildOutdoorCards();
+void renderOutdoorCard();
+
 void outdoorFetchTask(void *) {
   String result;
   if (WiFi.status() != WL_CONNECTED) {
