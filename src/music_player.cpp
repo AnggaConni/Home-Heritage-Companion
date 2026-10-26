@@ -30,6 +30,7 @@ bool sdReady = false;
 bool codecReady = false;
 bool playing = false;
 bool paused = false;
+bool pausedForFetch = false;
 uint8_t volumePercent = 40;
 
 lv_obj_t *statusLabel = nullptr;
@@ -297,6 +298,26 @@ void musicPlayerInit() {
 
 void musicPlayerLoop() {
   audio.loop();
+}
+
+void musicPlayerPauseForFetch() {
+  pausedForFetch = playing && !paused;
+  if (pausedForFetch) {
+    audio.pauseResume();
+    paused = true;
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
+    setStatus("Music paused while Outdoor data loads.", 0xD97706);
+  }
+}
+
+void musicPlayerResumeAfterFetch() {
+  if (pausedForFetch && playing && paused) {
+    audio.pauseResume();
+    paused = false;
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
+    setStatus("Outdoor data loaded. Music resumed.", 0x16A34A);
+  }
+  pausedForFetch = false;
 }
 
 void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
