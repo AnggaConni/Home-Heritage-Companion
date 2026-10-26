@@ -20,6 +20,7 @@ constexpr int TOUCH_SDA = 16;
 constexpr int TOUCH_SCL = 15;
 constexpr int TOUCH_INT = 17;
 constexpr int TOUCH_RST = 18;
+constexpr int TFT_BACKLIGHT = 45;
 constexpr uint8_t TOUCH_ADDR = 0x38;
 constexpr uint32_t WIFI_RETRY_MS = 15000;
 constexpr uint32_t UI_REFRESH_MS = 1000;
@@ -494,8 +495,8 @@ void setup() {
 
   // ES3C28P requires GPIO45 HIGH to enable the TFT backlight.
   // Enable it before initializing the panel so startup diagnostics are visible.
-  pinMode(45, OUTPUT);
-  digitalWrite(45, HIGH);
+  pinMode(TFT_BACKLIGHT, OUTPUT);
+  digitalWrite(TFT_BACKLIGHT, HIGH);
   delay(20);
   Serial.println("Display: backlight GPIO45 enabled; initializing TFT_eSPI");
 
