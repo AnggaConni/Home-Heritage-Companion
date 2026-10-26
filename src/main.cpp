@@ -502,8 +502,20 @@ void setup() {
 
   tft.begin();
   tft.setRotation(0);
-  tft.fillScreen(TFT_BLACK);
   tft.setSwapBytes(true);
+
+  // Short color-bar diagnostic: proves whether TFT_eSPI can actually draw
+  // pixels before LVGL takes ownership of the panel.
+  Serial.println("Display test: RED");
+  tft.fillScreen(TFT_RED);
+  delay(250);
+  Serial.println("Display test: GREEN");
+  tft.fillScreen(TFT_GREEN);
+  delay(250);
+  Serial.println("Display test: BLUE");
+  tft.fillScreen(TFT_BLUE);
+  delay(250);
+  tft.fillScreen(TFT_BLACK);
   Serial.println("Display: TFT_eSPI initialized; registering LVGL display");
 
   lv_init();
