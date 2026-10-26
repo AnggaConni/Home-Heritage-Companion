@@ -352,15 +352,29 @@ void handleWifiScan(lv_event_t *) {
     return;
   }
 
-  // ESP32-S3 Wi-Fi is 2.4 GHz only. Use asynchronous scanning so LVGL
-  // keeps running and the screen can report the actual scan result.
+  // ESP32-S3 supports 2.4 GHz only. If it is stuck trying an old saved
+  // network, stop that attempt before starting a fresh scan.
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect(false, false);
+    delay(120);
+  }
+
+  const int priorScan = WiFi.scanComplete();
+  if (priorScan == WIFI_SCAN_RUNNING) {
+    wifiScanInProgress = true;
+    setStatus("A Wi-Fi scan is already running...", 0x2563EB);
+    Serial.println("Wi-Fi scan: existing scan is still running");
+    return;
+  }
   WiFi.scanDelete();
-  const int result = WiFi.scanNetworks(true, true);
+  const int result = WiFi.scanNetworks(true, true, false, 300);
+  Serial.printf("Wi-Fi scan start return: %d (RUNNING=%d, FAILED=%d)\n",
+                result, WIFI_SCAN_RUNNING, WIFI_SCAN_FAILED);
   if (result == WIFI_SCAN_FAILED) {
-    setStatus("Scan could not start. Retry.", 0xDC2626);
-    Serial.println("Wi-Fi scan: could not start");
+    setStatus("Scan start failed. Tap Scan Wi-Fi again.", 0xDC2626);
+    Serial.printf("Wi-Fi scan: could not start; status=%d\n", WiFi.status());
     return;
   }
   wifiScanInProgress = true;
