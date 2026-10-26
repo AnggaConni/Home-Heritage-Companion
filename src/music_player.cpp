@@ -23,6 +23,9 @@ Audio audio;
 String tracks[MAX_TRACKS];
 size_t trackCount = 0;
 int selectedTrack = -1;
+int shuffleOrder[MAX_TRACKS];
+size_t shufflePosition = 0;
+bool shuffleEnabled = false;
 bool sdReady = false;
 bool codecReady = false;
 bool playing = false;
@@ -33,6 +36,7 @@ lv_obj_t *statusLabel = nullptr;
 lv_obj_t *nowPlayingLabel = nullptr;
 lv_obj_t *trackDropdown = nullptr;
 lv_obj_t *playButton = nullptr;
+lv_obj_t *shuffleButton = nullptr;
 lv_obj_t *volumeSlider = nullptr;
 
 bool writeCodec(uint8_t reg, uint8_t value) {
@@ -132,6 +136,89 @@ void scanFolder() {
   Serial.printf("[music] %u supported tracks\n", static_cast<unsigned>(trackCount));
 }
 
+void shufflePlaylist(bool keepCurrentFirst) {
+  for (size_t i = 0; i < trackCount; ++i) shuffleOrder[i] = static_cast<int>(i);
+  // Fisher-Yates: randomize the upcoming playlist order.
+  for (size_t i = trackCount; i > 1; --i) {
+    const size_t j = static_cast<size_t>(random(static_cast<long>(i)));
+    const int tmp = shuffleOrder[i - 1];
+    shuffleOrder[i - 1] = shuffleOrder[j];
+    shuffleOrder[j] = tmp;
+  }
+  shufflePosition = 0;
+  if (keepCurrentFirst && selectedTrack >= 0 && selectedTrack < static_cast<int>(trackCount)) {
+    for (size_t i = 0; i < trackCount; ++i) {
+      if (shuffleOrder[i] == selectedTrack) {
+        const int tmp = shuffleOrder[0];
+        shuffleOrder[0] = shuffleOrder[i];
+        shuffleOrder[i] = tmp;
+        break;
+      }
+    }
+  }
+}
+
+void updateShuffleButton() {
+  if (!shuffleButton) return;
+  lv_obj_t *label = lv_obj_get_child(shuffleButton, 0);
+  if (label) lv_label_set_text(label, shuffleEnabled ? "Shuffle: ON" : "Shuffle: OFF");
+  lv_obj_set_style_bg_color(shuffleButton,
+    lv_color_hex(shuffleEnabled ? 0x15803D : 0x475569), LV_PART_MAIN);
+}
+
+int nextTrackIndex(bool forward) {
+  if (!trackCount) return -1;
+  if (!shuffleEnabled) {
+    return forward
+      ? (selectedTrack + 1) % static_cast<int>(trackCount)
+      : (selectedTrack <= 0 ? static_cast<int>(trackCount - 1) : selectedTrack - 1);
+  }
+
+  if (!trackCount) return -1;
+  bool found = false;
+  for (size_t i = 0; i < trackCount; ++i) {
+    if (shuffleOrder[i] == selectedTrack) {
+      shufflePosition = i;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    shufflePlaylist(true);
+    return trackCount > 1 ? shuffleOrder[1] : shuffleOrder[0];
+  }
+
+  if (forward) {
+    if (shufflePosition + 1 >= trackCount) {
+      const int previousTrack = selectedTrack;
+      shufflePlaylist(false);
+      if (trackCount > 1 && shuffleOrder[0] == previousTrack) {
+        const int tmp = shuffleOrder[0];
+        shuffleOrder[0] = shuffleOrder[1];
+        shuffleOrder[1] = tmp;
+      }
+      shufflePosition = 0;
+    } else {
+      ++shufflePosition;
+    }
+  } else {
+    if (shufflePosition == 0) shufflePosition = trackCount - 1;
+    else --shufflePosition;
+  }
+  return shuffleOrder[shufflePosition];
+}
+
+void onShuffle(lv_event_t *) {
+  shuffleEnabled = !shuffleEnabled;
+  if (shuffleEnabled) {
+    shufflePlaylist(true);
+    setStatus("Shuffle enabled: upcoming tracks randomized.", 0x16A34A);
+  } else {
+    setStatus("Shuffle disabled: normal playlist order.");
+  }
+  updateShuffleButton();
+}
+
 void startSelected() {
   if (!codecReady) { setStatus("ES8311 codec not detected.", 0xDC2626); return; }
   if (!sdReady) { setStatus("microSD mount failed.", 0xDC2626); return; }
@@ -172,14 +259,14 @@ void onPlay(lv_event_t *) {
 
 void onNext(lv_event_t *) {
   if (!trackCount) { setStatus("No tracks in /Music.", 0xDC2626); return; }
-  selectedTrack = (selectedTrack + 1) % static_cast<int>(trackCount);
+  selectedTrack = nextTrackIndex(true);
   if (trackDropdown) lv_dropdown_set_selected(trackDropdown, selectedTrack);
   startSelected();
 }
 
 void onPrevious(lv_event_t *) {
   if (!trackCount) { setStatus("No tracks in /Music.", 0xDC2626); return; }
-  selectedTrack = selectedTrack <= 0 ? static_cast<int>(trackCount - 1) : selectedTrack - 1;
+  selectedTrack = nextTrackIndex(false);
   if (trackDropdown) lv_dropdown_set_selected(trackDropdown, selectedTrack);
   startSelected();
 }
@@ -204,6 +291,7 @@ void musicPlayerInit() {
   pinMode(PA_ENABLE, OUTPUT);
   digitalWrite(PA_ENABLE, codecReady ? LOW : HIGH);
   audio.setVolume(map(volumePercent, 0, 100, 0, 21));
+  randomSeed(static_cast<unsigned long>(esp_random()));
   scanFolder();
 }
 
@@ -217,6 +305,7 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   nowPlayingLabel = nullptr;
   trackDropdown = nullptr;
   playButton = nullptr;
+  shuffleButton = nullptr;
   volumeSlider = nullptr;
 
   lv_obj_t *heading = lv_label_create(root);
@@ -247,28 +336,37 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   lv_obj_add_event_cb(trackDropdown, onTrackChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t *previous = lv_btn_create(root);
-  lv_obj_set_size(previous, 78, 34);
-  lv_obj_align(previous, LV_ALIGN_TOP_LEFT, 12, 108);
+  lv_obj_set_size(previous, 54, 34);
+  lv_obj_align(previous, LV_ALIGN_TOP_LEFT, 8, 108);
   lv_obj_t *previousLabel = lv_label_create(previous);
   lv_label_set_text(previousLabel, "Prev");
   lv_obj_center(previousLabel);
   lv_obj_add_event_cb(previous, onPrevious, LV_EVENT_CLICKED, nullptr);
 
   playButton = lv_btn_create(root);
-  lv_obj_set_size(playButton, 104, 34);
-  lv_obj_align(playButton, LV_ALIGN_TOP_MID, 0, 108);
+  lv_obj_set_size(playButton, 68, 34);
+  lv_obj_align(playButton, LV_ALIGN_TOP_LEFT, 68, 108);
   lv_obj_t *playLabel = lv_label_create(playButton);
   lv_label_set_text(playLabel, playing ? "Pause" : "Play");
   lv_obj_center(playLabel);
   lv_obj_add_event_cb(playButton, onPlay, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t *next = lv_btn_create(root);
-  lv_obj_set_size(next, 78, 34);
-  lv_obj_align(next, LV_ALIGN_TOP_RIGHT, -12, 108);
+  lv_obj_set_size(next, 54, 34);
+  lv_obj_align(next, LV_ALIGN_TOP_LEFT, 142, 108);
   lv_obj_t *nextLabel = lv_label_create(next);
   lv_label_set_text(nextLabel, "Next");
   lv_obj_center(nextLabel);
   lv_obj_add_event_cb(next, onNext, LV_EVENT_CLICKED, nullptr);
+
+  shuffleButton = lv_btn_create(root);
+  lv_obj_set_size(shuffleButton, 104, 34);
+  lv_obj_align(shuffleButton, LV_ALIGN_TOP_RIGHT, -8, 108);
+  lv_obj_t *shuffleLabel = lv_label_create(shuffleButton);
+  lv_label_set_text(shuffleLabel, "Shuffle: OFF");
+  lv_obj_center(shuffleLabel);
+  lv_obj_add_event_cb(shuffleButton, onShuffle, LV_EVENT_CLICKED, nullptr);
+  updateShuffleButton();
 
   lv_obj_t *volumeLabel = lv_label_create(root);
   lv_label_set_text(volumeLabel, "Volume");
