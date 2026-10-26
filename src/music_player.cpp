@@ -287,11 +287,8 @@ void musicPlayerInit() {
   if (!sdReady) sdReady = SD_MMC.begin("/sdcard", true);
   Serial.printf("[music] SD_MMC mount: %s\n", sdReady ? "OK" : "FAILED");
 
-  // Use the pinned ESP32-audioI2S 3.4.4 API; its decoder task runs separately
-  // from the Arduino/LVGL loop to reduce audio underruns during UI refreshes.
-  audio.setPinout(I2S_BCLK, I2S_LRCK, I2S_DOUT, I2S_MCLK);
-  // Keep decoding/I2S output on core 0, separate from Arduino loop + LVGL on core 1.
-  audio.setAudioTaskCore(0);
+  // Keep initialization compatible with the ESP32-audioI2S API resolved by PlatformIO.
+  audio.setPinout(I2S_BCLK, I2S_LRCK, I2S_DOUT, I2S_PIN_NO_CHANGE, I2S_MCLK);
   codecReady = initCodec();
   pinMode(PA_ENABLE, OUTPUT);
   digitalWrite(PA_ENABLE, codecReady ? LOW : HIGH);
