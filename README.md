@@ -10,7 +10,7 @@ This is an early, hardware-unverified firmware baseline. It now contains working
 - Wi-Fi station connection, on-screen SSID/password entry, local credential storage with ESP32 Preferences, and reconnect attempts.
 - Indoor / Mochi page with clearly labelled demo readings until LoRa pins are verified; live UART JSON telemetry parser is ready for verified wiring.
 - Outdoor / OurHeritage page querying live Open-Meteo Weather, Open-Meteo Air Quality, Open-Meteo Flood, USGS Earthquake, and NASA POWER APIs for a Jakarta demo location. Includes rule-based conservation recommendations based on returned indicators; unavailable APIs are shown as unavailable rather than inventing readings.
-- MP3/M4A player reads tracks from the `/Music` folder on microSD and calls `audio.loop()` continuously; main-loop delay is set to 1 ms to keep audio playback responsive.
+- MP3/M4A player reads tracks from the `/Music` folder on microSD, supports an optional Shuffle toggle that randomizes upcoming tracks without immediately replaying the current track, and calls `audio.loop()` continuously; main-loop delay is set to 1 ms to keep audio playback responsive.
 - Serial diagnostics at 115200 baud.
 
 Sensor values are shown only after a valid telemetry packet is received. No fake sensor readings are generated.
