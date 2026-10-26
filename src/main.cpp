@@ -890,7 +890,7 @@ void loop() {
       setStatus(message, 0xDC2626);
     }
     updateWifiLabel();
-    updateHeritageStatus();
+    updateOutdoorStatus();
   }
 
   const uint32_t now = millis();
