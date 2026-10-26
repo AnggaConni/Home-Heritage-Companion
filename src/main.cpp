@@ -219,7 +219,7 @@ String fetchOutdoorApi(const String &url) {
 void buildOutdoorCards();
 void renderOutdoorCard();
 
-void outdoorFetchTask(void *) {
+String fetchOutdoorData() {
   String result;
   if (WiFi.status() != WL_CONNECTED) {
     result = "Outdoor / OurHeritage\nWi-Fi is offline.\nConnect in Settings to retrieve live API data.";
@@ -320,27 +320,35 @@ void outdoorFetchTask(void *) {
     }
     result += "\nSources: Open-Meteo Weather/Air/Flood, USGS, NASA POWER.";
   }
-  outdoorResult = result;
-  outdoorFetchDone = true;
-  outdoorFetchRunning = false;
-  vTaskDelete(nullptr);
+  return result;
 }
 
 void requestOutdoorData() {
   if (outdoorFetchRunning) return;
   if (WiFi.status() != WL_CONNECTED) {
-    outdoorResult = "OUTDOOR / OURHERITAGE\nWi-Fi is offline.\nConnect in Settings, then return to Outdoor.";
+    outdoorResult = "OUTDOOR / OURHERITAGE\\nWi-Fi is offline.\\nConnect in Settings, then return to Outdoor.";
     outdoorFetchDone = true;
+    if (outdoorCardBody) { buildOutdoorCards(); renderOutdoorCard(); }
     return;
   }
+
+  // Synchronous fetch: pause audio first so SD/network activity cannot starve playback.
   outdoorFetchRunning = true;
   outdoorFetchDone = false;
-  outdoorResult = "OUTDOOR / OURHERITAGE\nFetching live data from Open-Meteo, USGS, and NASA POWER...";
+  outdoorResult = "OUTDOOR / OURHERITAGE\\nFetching live data... Music paused temporarily.";
   if (outdoorCardBody) { buildOutdoorCards(); renderOutdoorCard(); }
-  if (xTaskCreatePinnedToCore(outdoorFetchTask, "outdoor_api", 10240, nullptr, 0, nullptr, 0) != pdPASS) {
-    outdoorFetchRunning = false;
-    outdoorResult = "Could not start API task. Please retry.";
-    outdoorFetchDone = true;
+
+  musicPlayerPauseForFetch();
+  outdoorResult = fetchOutdoorData();
+  musicPlayerResumeAfterFetch();
+
+  outdoorFetchRunning = false;
+  outdoorFetchDone = true;
+  if (outdoorCardBody) {
+    buildOutdoorCards();
+    renderOutdoorCard();
+    if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
+    outdoorRenderedResult = outdoorResult;
   }
 }
 
