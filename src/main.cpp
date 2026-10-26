@@ -222,7 +222,7 @@ void outdoorFetchTask(void *) {
     const String nasaEnd = buildDateCompact(2);
     const String weatherJson = fetchOutdoorApi(
       "https://api.open-meteo.com/v1/forecast?" + coords +
-      "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&daily=precipitation_sum,uv_index_max&timezone=Asia%2FJakarta&forecast_days=1");
+      "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&daily=precipitation_sum,uv_index_max&timezone=Asia%2FJakarta&forecast_days=7");
     const String airJson = fetchOutdoorApi(
       "https://air-quality-api.open-meteo.com/v1/air-quality?" + coords +
       "&current=pm2_5,pm10,uv_index,ozone,nitrogen_dioxide&timezone=Asia%2FJakarta");
@@ -242,24 +242,33 @@ void outdoorFetchTask(void *) {
     const bool haveNasa = nasaJson.length() && !deserializeJson(nasa, nasaJson);
 
     result = "OUTDOOR / OURHERITAGE\nJakarta | Live public APIs\n";
-    float temp = NAN, rh = NAN, rain = NAN, wind = NAN, pm25 = NAN, uv = NAN, discharge = NAN, solar = NAN;
+    float temp = NAN, rh = NAN, rain = NAN, forecastRain = NAN, wind = NAN, pm25 = NAN, uv = NAN, solar = NAN, dischargePeak = NAN, dischargeBase = NAN;
+    float maxMagnitude = NAN;
     int quakes = -1;
     if (haveWeather) {
       temp = weather["current"]["temperature_2m"] | NAN;
       rh = weather["current"]["relative_humidity_2m"] | NAN;
       rain = weather["current"]["precipitation"] | NAN;
       wind = weather["current"]["wind_speed_10m"] | NAN;
+      JsonArray rainValues = weather["daily"]["precipitation_sum"].as<JsonArray>();
+      for (JsonVariant v : rainValues) { float n = v | NAN; if (!isnan(n) && (isnan(forecastRain) || n > forecastRain)) forecastRain = n; }
+      if (isnan(uv)) { JsonArray uvValues = weather["daily"]["uv_index_max"].as<JsonArray>(); for (JsonVariant v : uvValues) { float n = v | NAN; if (!isnan(n) && (isnan(uv) || n > uv)) uv = n; } }
     }
     if (haveAir) {
       pm25 = air["current"]["pm2_5"] | NAN;
       uv = air["current"]["uv_index"] | NAN;
     }
-    if (haveQuake) quakes = quake["metadata"]["count"] | 0;
+    if (haveQuake) {
+      quakes = quake["metadata"]["count"] | 0;
+      JsonArray features = quake["features"].as<JsonArray>();
+      for (JsonVariant feature : features) { float mag = feature["properties"]["mag"] | NAN; if (!isnan(mag) && (isnan(maxMagnitude) || mag > maxMagnitude)) maxMagnitude = mag; }
+    }
     if (haveFlood) {
       JsonArray values = flood["daily"]["river_discharge"].as<JsonArray>();
+      bool first = true;
       for (JsonVariant v : values) {
         float n = v | NAN;
-        if (!isnan(n) && (isnan(discharge) || n > discharge)) discharge = n;
+        if (!isnan(n)) { if (first) { dischargeBase = n; first = false; } if (isnan(dischargePeak) || n > dischargePeak) dischargePeak = n; }
       }
     }
     if (haveNasa) {
@@ -272,23 +281,29 @@ void outdoorFetchTask(void *) {
     result += "Temp: " + (isnan(temp) ? String("--") : String(temp, 1) + " C");
     result += " | RH: " + (isnan(rh) ? String("--") : String(rh, 0) + "%") + "\n";
     result += "Rain now: " + (isnan(rain) ? String("--") : String(rain, 1) + " mm");
+    result += " | 7d max/day: " + (isnan(forecastRain) ? String("--") : String(forecastRain, 1) + " mm");
     result += " | Wind: " + (isnan(wind) ? String("--") : String(wind, 1) + " km/h") + "\n";
     result += "PM2.5: " + (isnan(pm25) ? String("--") : String(pm25, 1) + " ug/m3");
     result += " | UV: " + (isnan(uv) ? String("--") : String(uv, 1)) + "\n";
-    result += "Quakes M2.5+ within 100 km / 7 days: " + String(quakes < 0 ? 0 : quakes) + "\n";
-    result += "Flood river discharge peak (7d): " + (isnan(discharge) ? String("unavailable") : String(discharge, 1) + " m3/s") + "\n";
+    result += "Quakes M2.5+ within 100 km / 7 days: " + String(quakes < 0 ? 0 : quakes);
+    result += " | Max M: " + (isnan(maxMagnitude) ? String("--") : String(maxMagnitude, 1)) + "\n";
+    result += "Flood river discharge peak (7d): " + (isnan(dischargePeak) ? String("unavailable") : String(dischargePeak, 1) + " m3/s") + "\n";
     result += "NASA POWER solar radiation peak: " + (isnan(solar) ? String("unavailable") : String(solar, 1) + " kWh/m2/day") + "\n";
     result += "\nCONSERVATION RECOMMENDATIONS\n";
     if (!haveWeather && !haveAir) {
       result += "- Weather/Air APIs unavailable; retry when internet is stable.\n";
     } else {
-      if (!isnan(rh) && rh >= 75) result += "- High outdoor humidity: inspect indoor RH, improve moisture control, and check for condensation/mould.\n";
-      if (!isnan(rh) && rh < 40) result += "- Low outdoor RH: monitor sensitive organic materials; do not adjust indoor humidity from outdoor data alone.\n";
+      if (!isnan(rh) && rh > 80) result += "- CRITICAL humidity: inspect for condensation, mould and corrosion; verify indoor RH and activate moisture-control SOP if indoor sensors confirm the risk.\n";
+      else if (!isnan(rh) && rh > 65) result += "- Elevated humidity: monitor paper, leather, textile, wood and paintings; check indoor RH and ventilation/dehumidification controls.\n";
+      if (!isnan(rh) && rh < 35) result += "- Very dry outdoor air: monitor sensitive organic materials for shrinkage/embrittlement; do not change indoor RH from outdoor data alone.\n";
       if (!isnan(pm25) && pm25 >= 25) result += "- Elevated PM2.5: keep vulnerable collections protected; inspect seals/filters and avoid drawing polluted outdoor air indoors.\n";
-      if (!isnan(rain) && rain >= 2) result += "- Rain detected: inspect roof, drainage, leaks, and water ingress near the heritage site.\n";
+      if ((!isnan(rain) && rain >= 2) || (!isnan(forecastRain) && forecastRain > 20)) result += "- Rain/heavy-rain signal: inspect roof, drainage, leaks, and water ingress; protect vulnerable collections from flooding.\n";
       if (!isnan(wind) && wind >= 30) result += "- Strong wind: inspect temporary structures, loose roofing, trees, and exposed site elements.\n";
       if (!isnan(uv) && uv >= 6) result += "- High UV: reduce direct sunlight exposure for light-sensitive collections.\n";
-      if (quakes > 0) result += "- Recent nearby earthquakes: check for new cracks, falling hazards, and structural changes; follow local authority guidance.\n";
+      if (quakes > 0) result += "- Recent nearby earthquakes: inspect for new cracks, falling hazards, and structural changes; follow local authority guidance.\n";
+      if (!isnan(dischargePeak) && !isnan(dischargeBase) && dischargePeak > dischargeBase * 2.5 && dischargePeak > 50) result += "- HIGH flood proxy: river discharge is elevated versus the forecast baseline; check official flood alerts and move vulnerable collections away from water-ingress zones.\n";
+      else if (!isnan(dischargePeak) && !isnan(dischargeBase) && dischargePeak > dischargeBase * 1.5 && dischargePeak > 20) result += "- MODERATE flood proxy: monitor drainage and official flood warnings; prepare water-ingress protection.\n";
+      if (!isnan(temp) && temp > 33) result += "- High temperature: reduce heat/light exposure for sensitive collections and verify indoor temperature.\n";
       if (isnan(rh) || isnan(pm25) || isnan(rain)) result += "- Some indicators are unavailable; check API connectivity and refresh.\n";
       result += "- These are outdoor proxies, not indoor sensor readings or official emergency alerts.\n";
     }
