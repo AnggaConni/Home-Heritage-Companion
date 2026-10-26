@@ -492,10 +492,18 @@ void setup() {
   Wire.begin(TOUCH_SDA, TOUCH_SCL);
   pinMode(TOUCH_INT, INPUT);
 
+  // ES3C28P requires GPIO45 HIGH to enable the TFT backlight.
+  // Enable it before initializing the panel so startup diagnostics are visible.
+  pinMode(45, OUTPUT);
+  digitalWrite(45, HIGH);
+  delay(20);
+  Serial.println("Display: backlight GPIO45 enabled; initializing TFT_eSPI");
+
   tft.begin();
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
   tft.setSwapBytes(true);
+  Serial.println("Display: TFT_eSPI initialized; registering LVGL display");
 
   lv_init();
   lv_disp_draw_buf_init(&drawBuf, drawPixels, nullptr, SCREEN_W * 20);
