@@ -287,11 +287,8 @@ void musicPlayerInit() {
   if (!sdReady) sdReady = SD_MMC.begin("/sdcard", true);
   Serial.printf("[music] SD_MMC mount: %s\n", sdReady ? "OK" : "FAILED");
 
-  // Give I2S a deeper DMA queue to reduce startup underruns/stuttering.
-  // The library's playback task stays on core 0, separate from Arduino/LVGL loop.
-  audio.settings.DMA_DESC_NUM = 24;
-  audio.settings.DMA_FRAME_NUM = 512;
-  audio.setAudioTaskCore(0);
+  // Keep initialization compatible with the ESP32-audioI2S API currently
+  // resolved by PlatformIO. DMA/task tuning differs between library versions.
   audio.setPinout(I2S_BCLK, I2S_LRCK, I2S_DOUT, I2S_PIN_NO_CHANGE, I2S_MCLK);
   codecReady = initCodec();
   pinMode(PA_ENABLE, OUTPUT);
