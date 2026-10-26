@@ -40,6 +40,7 @@ lv_obj_t *wifiLabel = nullptr;
 lv_obj_t *statusLabel = nullptr;
 lv_obj_t *ssidField = nullptr;
 lv_obj_t *passwordField = nullptr;
+lv_obj_t *showPasswordToggle = nullptr;
 lv_obj_t *wifiDropdown = nullptr;
 lv_obj_t *keyboard = nullptr;
 lv_obj_t *environmentLabel = nullptr;
@@ -139,6 +140,7 @@ void resetPageObjects() {
   statusLabel = nullptr;
   ssidField = nullptr;
   passwordField = nullptr;
+  showPasswordToggle = nullptr;
   wifiDropdown = nullptr;
   keyboard = nullptr;
   environmentLabel = nullptr;
@@ -337,6 +339,12 @@ void textareaFocused(lv_event_t *event) {
   lv_obj_move_foreground(keyboard);
 }
 
+void handleShowPassword(lv_event_t *event) {
+  if (!passwordField) return;
+  const bool show = lv_obj_has_state(lv_event_get_target(event), LV_STATE_CHECKED);
+  lv_textarea_set_password_mode(passwordField, !show);
+}
+
 void handleWifiScan(lv_event_t *) {
   if (statusLabel) setStatus("Scanning nearby Wi-Fi networks...", 0x2563EB);
   WiFi.mode(WIFI_STA);
@@ -424,6 +432,13 @@ void showSettings() {
   lv_obj_align(passwordField, LV_ALIGN_TOP_LEFT, 166, 42);
   lv_obj_add_event_cb(passwordField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
+  showPasswordToggle = lv_checkbox_create(root);
+  lv_checkbox_set_text(showPasswordToggle, "Show password");
+  lv_obj_set_style_text_color(showPasswordToggle, lv_color_hex(0xCBD5E1), 0);
+  lv_obj_set_style_text_font(showPasswordToggle, &lv_font_montserrat_12, 0);
+  lv_obj_align(showPasswordToggle, LV_ALIGN_TOP_LEFT, 166, 76);
+  lv_obj_add_event_cb(showPasswordToggle, handleShowPassword, LV_EVENT_VALUE_CHANGED, nullptr);
+
   lv_obj_t *scanButton = lv_btn_create(root);
   lv_obj_set_size(scanButton, 142, 32);
   lv_obj_align(scanButton, LV_ALIGN_TOP_LEFT, 12, 84);
@@ -439,8 +454,8 @@ void showSettings() {
   lv_obj_add_event_cb(wifiDropdown, handleWifiSelect, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t *connectButton = lv_btn_create(root);
-  lv_obj_set_size(connectButton, SCREEN_W - 24, 32);
-  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 126);
+  lv_obj_set_size(connectButton, SCREEN_W - 24, 30);
+  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 124);
   lv_obj_t *connectLabel = lv_label_create(connectButton);
   lv_label_set_text(connectLabel, "Save & Connect");
   lv_obj_center(connectLabel);
@@ -450,7 +465,7 @@ void showSettings() {
   lv_label_set_text(statusLabel, "Wi-Fi credentials are stored locally on this device.");
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, SCREEN_W - 24);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 166);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 158);
 
   keyboard = lv_keyboard_create(root);
   lv_obj_set_size(keyboard, SCREEN_W, 84);
@@ -628,12 +643,18 @@ void loop() {
   if (wifiGotIpEvent) {
     wifiGotIpEvent = false;
     Serial.printf("Wi-Fi connected: %s\n", WiFi.localIP().toString().c_str());
-    setStatus("Connected to Wi-Fi.", 0x16A34A);
+    String connected = "Connected! IP: " + WiFi.localIP().toString();
+    setStatus(connected.c_str(), 0x16A34A);
+    updateWifiLabel();
     updateHeritageStatus();
   }
   if (wifiDisconnectedEvent) {
     wifiDisconnectedEvent = false;
     Serial.println("Wi-Fi disconnected.");
+    if (currentPage == Page::SETTINGS && wifiConfigured) {
+      setStatus("Not connected yet. Check password or signal, then retry.", 0xDC2626);
+    }
+    updateWifiLabel();
     updateHeritageStatus();
   }
 
