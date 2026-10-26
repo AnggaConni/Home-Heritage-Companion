@@ -1042,8 +1042,9 @@ void setup() {
 }
 
 void loop() {
-  lv_timer_handler();
+  // Service the audio decoder first so display refreshes do not delay it.
   musicPlayerLoop();
+  lv_timer_handler();
   pollLoRa();
 
   if (wifiScanInProgress) {
