@@ -1,0 +1,297 @@
+#include "music_player.h"
+
+#include <Wire.h>
+#include <SD_MMC.h>
+#include <Audio.h>
+
+namespace {
+constexpr uint8_t CODEC_ADDR = 0x18;
+constexpr int PA_ENABLE = 1;       // FM8002E amplifier is enabled LOW
+constexpr int I2S_MCLK = 4;
+constexpr int I2S_BCLK = 5;
+constexpr int I2S_LRCK = 7;
+constexpr int I2S_DOUT = 8;
+constexpr int SD_CLK = 38;
+constexpr int SD_CMD = 40;
+constexpr int SD_D0 = 39;
+constexpr int SD_D1 = 41;
+constexpr int SD_D2 = 48;
+constexpr int SD_D3 = 47;
+constexpr size_t MAX_TRACKS = 80;
+
+Audio audio;
+String tracks[MAX_TRACKS];
+size_t trackCount = 0;
+int selectedTrack = -1;
+bool sdReady = false;
+bool codecReady = false;
+bool playing = false;
+uint8_t volumePercent = 40;
+
+lv_obj_t *statusLabel = nullptr;
+lv_obj_t *nowPlayingLabel = nullptr;
+lv_obj_t *trackDropdown = nullptr;
+lv_obj_t *playButton = nullptr;
+lv_obj_t *volumeSlider = nullptr;
+
+bool writeCodec(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(CODEC_ADDR);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
+}
+
+bool initCodec() {
+  Wire.beginTransmission(CODEC_ADDR);
+  if (Wire.endTransmission() != 0) {
+    Serial.println("[music] ES8311 not detected at 0x18");
+    return false;
+  }
+
+  // ES3C28P audio reference: I2S clocks come from ESP32-S3.
+  writeCodec(0x00, 0x1F);
+  delay(20);
+  writeCodec(0x00, 0x80);
+  writeCodec(0x01, 0x3F);
+  writeCodec(0x02, 0x00);
+  writeCodec(0x03, 0x10);
+  writeCodec(0x04, 0x10);
+  writeCodec(0x05, 0x00);
+  writeCodec(0x06, 0x03);
+  writeCodec(0x07, 0x00);
+  writeCodec(0x08, 0xFF);
+  writeCodec(0x09, 0x0C);
+  writeCodec(0x0A, 0x4C);
+  writeCodec(0x0B, 0x00);
+  writeCodec(0x0C, 0x00);
+  writeCodec(0x0D, 0x01);
+  writeCodec(0x0E, 0x02);
+  writeCodec(0x0F, 0x44);
+  writeCodec(0x10, 0x1F);
+  writeCodec(0x11, 0x7F);
+  writeCodec(0x12, 0x00);
+  writeCodec(0x13, 0x10);
+  writeCodec(0x14, 0x1A);
+  writeCodec(0x31, 0x00);
+  writeCodec(0x32, 0xBF);
+  writeCodec(0x33, 0xBF);
+  writeCodec(0x37, 0x08);
+  delay(40);
+  Serial.println("[music] ES8311 initialized");
+  return true;
+}
+
+String displayName(const String &path) {
+  const int slash = path.lastIndexOf('/');
+  return slash >= 0 ? path.substring(slash + 1) : path;
+}
+
+void setStatus(const char *message, uint32_t color = 0xCBD5E1) {
+  if (!statusLabel) return;
+  lv_label_set_text(statusLabel, message);
+  lv_obj_set_style_text_color(statusLabel, lv_color_hex(color), 0);
+}
+
+void refreshTitle() {
+  if (!nowPlayingLabel) return;
+  if (selectedTrack >= 0 && selectedTrack < static_cast<int>(trackCount)) {
+    String name = displayName(tracks[selectedTrack]);
+    lv_label_set_text(nowPlayingLabel, name.c_str());
+  } else {
+    lv_label_set_text(nowPlayingLabel, "Nothing playing");
+  }
+}
+
+void scanFolder() {
+  trackCount = 0;
+  if (!sdReady) return;
+  File dir = SD_MMC.open("/Music");
+  if (!dir || !dir.isDirectory()) {
+    Serial.println("[music] /Music folder not found");
+    if (dir) dir.close();
+    return;
+  }
+
+  File entry = dir.openNextFile();
+  while (entry && trackCount < MAX_TRACKS) {
+    if (!entry.isDirectory()) {
+      String path = String(entry.name());
+      String lower = path;
+      lower.toLowerCase();
+      if (lower.endsWith(".mp3") || lower.endsWith(".m4a")) {
+        if (!path.startsWith("/")) path = String("/Music/") + path;
+        tracks[trackCount++] = path;
+        Serial.printf("[music] found: %s\n", path.c_str());
+      }
+    }
+    entry.close();
+    entry = dir.openNextFile();
+  }
+  dir.close();
+  Serial.printf("[music] %u supported tracks\n", static_cast<unsigned>(trackCount));
+}
+
+void startSelected() {
+  if (!codecReady) { setStatus("ES8311 codec not detected.", 0xDC2626); return; }
+  if (!sdReady) { setStatus("microSD mount failed.", 0xDC2626); return; }
+  if (!trackCount) { setStatus("No MP3/M4A files in /Music.", 0xDC2626); return; }
+  if (selectedTrack < 0 || selectedTrack >= static_cast<int>(trackCount)) selectedTrack = 0;
+
+  audio.stopSong();
+  const String path = tracks[selectedTrack];
+  audio.connecttoFS(SD_MMC, path.c_str());
+  playing = true;
+  if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
+  refreshTitle();
+  setStatus("Opening track from microSD...", 0x16A34A);
+  Serial.printf("[music] play: %s\n", path.c_str());
+}
+
+void onTrackChanged(lv_event_t *) {
+  if (!trackDropdown || !trackCount) return;
+  const uint16_t index = lv_dropdown_get_selected(trackDropdown);
+  if (index < trackCount) {
+    selectedTrack = index;
+    refreshTitle();
+    setStatus("Track selected. Press Play.");
+  }
+}
+
+void onPlay(lv_event_t *) {
+  if (playing) {
+    audio.pauseResume();
+    playing = false;
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
+    setStatus("Paused");
+  } else {
+    startSelected();
+  }
+}
+
+void onNext(lv_event_t *) {
+  if (!trackCount) { setStatus("No tracks in /Music.", 0xDC2626); return; }
+  selectedTrack = (selectedTrack + 1) % static_cast<int>(trackCount);
+  if (trackDropdown) lv_dropdown_set_selected(trackDropdown, selectedTrack);
+  startSelected();
+}
+
+void onPrevious(lv_event_t *) {
+  if (!trackCount) { setStatus("No tracks in /Music.", 0xDC2626); return; }
+  selectedTrack = selectedTrack <= 0 ? static_cast<int>(trackCount - 1) : selectedTrack - 1;
+  if (trackDropdown) lv_dropdown_set_selected(trackDropdown, selectedTrack);
+  startSelected();
+}
+
+void onVolume(lv_event_t *event) {
+  volumePercent = static_cast<uint8_t>(lv_slider_get_value(lv_event_get_target(event)));
+  audio.setVolume(map(volumePercent, 0, 100, 0, 21));
+  char text[32];
+  snprintf(text, sizeof(text), "Volume: %u%%", volumePercent);
+  setStatus(text);
+}
+} // namespace
+
+void musicPlayerInit() {
+  SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
+  sdReady = SD_MMC.begin("/sdcard", false);
+  if (!sdReady) sdReady = SD_MMC.begin("/sdcard", true);
+  Serial.printf("[music] SD_MMC mount: %s\n", sdReady ? "OK" : "FAILED");
+
+  audio.setPinout(I2S_BCLK, I2S_LRCK, I2S_DOUT, I2S_PIN_NO_CHANGE, I2S_MCLK);
+  codecReady = initCodec();
+  pinMode(PA_ENABLE, OUTPUT);
+  digitalWrite(PA_ENABLE, codecReady ? LOW : HIGH);
+  audio.setVolume(map(volumePercent, 0, 100, 0, 21));
+  scanFolder();
+}
+
+void musicPlayerLoop() {
+  audio.loop();
+}
+
+void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
+  lv_obj_clean(root);
+  statusLabel = nullptr;
+  nowPlayingLabel = nullptr;
+  trackDropdown = nullptr;
+  playButton = nullptr;
+  volumeSlider = nullptr;
+
+  lv_obj_t *heading = lv_label_create(root);
+  lv_label_set_text(heading, "Music Player");
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 8);
+
+  nowPlayingLabel = lv_label_create(root);
+  lv_label_set_long_mode(nowPlayingLabel, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(nowPlayingLabel, 296);
+  lv_obj_align(nowPlayingLabel, LV_ALIGN_TOP_LEFT, 12, 38);
+  refreshTitle();
+
+  trackDropdown = lv_dropdown_create(root);
+  lv_obj_set_size(trackDropdown, 296, 34);
+  lv_obj_align(trackDropdown, LV_ALIGN_TOP_LEFT, 12, 64);
+  if (trackCount) {
+    String options;
+    for (size_t i = 0; i < trackCount; ++i) {
+      if (i) options += "\n";
+      options += displayName(tracks[i]);
+    }
+    lv_dropdown_set_options(trackDropdown, options.c_str());
+    if (selectedTrack >= 0) lv_dropdown_set_selected(trackDropdown, selectedTrack);
+  } else {
+    lv_dropdown_set_options(trackDropdown, "No songs found");
+  }
+  lv_obj_add_event_cb(trackDropdown, onTrackChanged, LV_EVENT_VALUE_CHANGED, nullptr);
+
+  lv_obj_t *previous = lv_btn_create(root);
+  lv_obj_set_size(previous, 78, 34);
+  lv_obj_align(previous, LV_ALIGN_TOP_LEFT, 12, 108);
+  lv_obj_t *previousLabel = lv_label_create(previous);
+  lv_label_set_text(previousLabel, "Prev");
+  lv_obj_center(previousLabel);
+  lv_obj_add_event_cb(previous, onPrevious, LV_EVENT_CLICKED, nullptr);
+
+  playButton = lv_btn_create(root);
+  lv_obj_set_size(playButton, 104, 34);
+  lv_obj_align(playButton, LV_ALIGN_TOP_MID, 0, 108);
+  lv_obj_t *playLabel = lv_label_create(playButton);
+  lv_label_set_text(playLabel, playing ? "Pause" : "Play");
+  lv_obj_center(playLabel);
+  lv_obj_add_event_cb(playButton, onPlay, LV_EVENT_CLICKED, nullptr);
+
+  lv_obj_t *next = lv_btn_create(root);
+  lv_obj_set_size(next, 78, 34);
+  lv_obj_align(next, LV_ALIGN_TOP_RIGHT, -12, 108);
+  lv_obj_t *nextLabel = lv_label_create(next);
+  lv_label_set_text(nextLabel, "Next");
+  lv_obj_center(nextLabel);
+  lv_obj_add_event_cb(next, onNext, LV_EVENT_CLICKED, nullptr);
+
+  lv_obj_t *volumeLabel = lv_label_create(root);
+  lv_label_set_text(volumeLabel, "Volume");
+  lv_obj_align(volumeLabel, LV_ALIGN_TOP_LEFT, 12, 151);
+  volumeSlider = lv_slider_create(root);
+  lv_obj_set_size(volumeSlider, 212, 16);
+  lv_obj_align(volumeSlider, LV_ALIGN_TOP_LEFT, 80, 151);
+  lv_slider_set_range(volumeSlider, 0, 100);
+  lv_slider_set_value(volumeSlider, volumePercent, LV_ANIM_OFF);
+  lv_obj_add_event_cb(volumeSlider, onVolume, LV_EVENT_VALUE_CHANGED, nullptr);
+
+  statusLabel = lv_label_create(root);
+  lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(statusLabel, 296);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 177);
+  if (!codecReady) setStatus("ES8311 codec not detected.", 0xDC2626);
+  else if (!sdReady) setStatus("microSD mount failed.", 0xDC2626);
+  else if (!trackCount) setStatus("No MP3/M4A files in /Music.", 0xDC2626);
+  else setStatus("Ready to play", 0x16A34A);
+
+  lv_obj_t *back = lv_btn_create(root);
+  lv_obj_set_size(back, 100, 36);
+  lv_obj_align(back, LV_ALIGN_BOTTOM_LEFT, 12, -8);
+  lv_obj_t *backLabel = lv_label_create(back);
+  lv_label_set_text(backLabel, "Home");
+  lv_obj_center(backLabel);
+  lv_obj_add_event_cb(back, backCallback, LV_EVENT_CLICKED, nullptr);
+}
