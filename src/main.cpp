@@ -474,17 +474,19 @@ void showOutdoor() {
   outdoorCardTitle = nullptr;
   outdoorCardBody = nullptr;
   outdoorPageIndicator = nullptr;
+
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Outdoor / OurHeritage");
+  lv_label_set_text(heading, LV_SYMBOL_GPS " OUTDOOR INTELLIGENCE");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 5);
+  lv_obj_set_style_text_color(heading, lv_color_hex(0xE2E8F0), 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 10, 5);
 
   outdoorCard = lv_obj_create(root);
   lv_obj_set_size(outdoorCard, 300, 142);
   lv_obj_align(outdoorCard, LV_ALIGN_TOP_LEFT, 10, 30);
-  lv_obj_set_style_radius(outdoorCard, 12, 0);
-  lv_obj_set_style_bg_color(outdoorCard, lv_color_hex(0xF1F5F9), 0);
-  lv_obj_set_style_border_color(outdoorCard, lv_color_hex(0xCBD5E1), 0);
+  lv_obj_set_style_radius(outdoorCard, 14, 0);
+  lv_obj_set_style_bg_color(outdoorCard, lv_color_hex(0x172033), 0);
+  lv_obj_set_style_border_color(outdoorCard, lv_color_hex(0x334155), 0);
   lv_obj_set_style_border_width(outdoorCard, 1, 0);
   lv_obj_set_style_pad_all(outdoorCard, 10, 0);
   lv_obj_set_scroll_dir(outdoorCard, LV_DIR_VER);
@@ -492,16 +494,19 @@ void showOutdoor() {
 
   outdoorCardTitle = lv_label_create(outdoorCard);
   lv_obj_set_style_text_font(outdoorCardTitle, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(outdoorCardTitle, lv_color_hex(0x0F766E), 0);
+  lv_obj_set_style_text_color(outdoorCardTitle, lv_color_hex(0x38BDF8), 0);
   lv_obj_align(outdoorCardTitle, LV_ALIGN_TOP_LEFT, 0, 0);
   outdoorCardBody = lv_label_create(outdoorCard);
   lv_label_set_long_mode(outdoorCardBody, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(outdoorCardBody, 276);
+  lv_obj_set_style_text_color(outdoorCardBody, lv_color_hex(0xCBD5E1), 0);
   lv_obj_align(outdoorCardBody, LV_ALIGN_TOP_LEFT, 0, 25);
 
   lv_obj_t *prev = lv_btn_create(root);
-  lv_obj_set_size(prev, 62, 26);
-  lv_obj_align(prev, LV_ALIGN_TOP_LEFT, 72, 176);
+  lv_obj_set_size(prev, 70, 28);
+  lv_obj_align(prev, LV_ALIGN_TOP_LEFT, 56, 176);
+  lv_obj_set_style_radius(prev, 9, 0);
+  lv_obj_set_style_bg_color(prev, lv_color_hex(0x334155), 0);
   lv_obj_t *prevLabel = lv_label_create(prev);
   lv_label_set_text(prevLabel, LV_SYMBOL_LEFT " Prev");
   lv_obj_center(prevLabel);
@@ -512,11 +517,14 @@ void showOutdoor() {
   }, LV_EVENT_CLICKED, nullptr);
 
   outdoorPageIndicator = lv_label_create(root);
-  lv_obj_align(outdoorPageIndicator, LV_ALIGN_TOP_MID, 0, 182);
+  lv_obj_set_style_text_color(outdoorPageIndicator, lv_color_hex(0x94A3B8), 0);
+  lv_obj_align(outdoorPageIndicator, LV_ALIGN_TOP_MID, 0, 184);
 
   lv_obj_t *next = lv_btn_create(root);
-  lv_obj_set_size(next, 62, 26);
-  lv_obj_align(next, LV_ALIGN_TOP_RIGHT, -72, 176);
+  lv_obj_set_size(next, 70, 28);
+  lv_obj_align(next, LV_ALIGN_TOP_RIGHT, -56, 176);
+  lv_obj_set_style_radius(next, 9, 0);
+  lv_obj_set_style_bg_color(next, lv_color_hex(0x0E7490), 0);
   lv_obj_t *nextLabel = lv_label_create(next);
   lv_label_set_text(nextLabel, "Next " LV_SYMBOL_RIGHT);
   lv_obj_center(nextLabel);
@@ -527,16 +535,20 @@ void showOutdoor() {
   }, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t *home = lv_btn_create(root);
-  lv_obj_set_size(home, 78, 25);
+  lv_obj_set_size(home, 86, 26);
   lv_obj_align(home, LV_ALIGN_BOTTOM_LEFT, 8, -5);
+  lv_obj_set_style_radius(home, 9, 0);
+  lv_obj_set_style_bg_color(home, lv_color_hex(0x334155), 0);
   lv_obj_t *homeLabel = lv_label_create(home);
   lv_label_set_text(homeLabel, LV_SYMBOL_LEFT " Home");
   lv_obj_center(homeLabel);
   lv_obj_add_event_cb(home, [](lv_event_t *) { showHome(); }, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t *refresh = lv_btn_create(root);
-  lv_obj_set_size(refresh, 78, 25);
+  lv_obj_set_size(refresh, 86, 26);
   lv_obj_align(refresh, LV_ALIGN_BOTTOM_RIGHT, -8, -5);
+  lv_obj_set_style_radius(refresh, 9, 0);
+  lv_obj_set_style_bg_color(refresh, lv_color_hex(0x0E7490), 0);
   lv_obj_t *refreshLabel = lv_label_create(refresh);
   lv_label_set_text(refreshLabel, LV_SYMBOL_REFRESH " Refresh");
   lv_obj_center(refreshLabel);
@@ -552,13 +564,19 @@ void showIndoor() {
   currentPage = Page::INDOOR;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Indoor / Mochi");
+  lv_label_set_text(heading, LV_SYMBOL_HOME " INDOOR / MOCHI");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 8);
+  lv_obj_set_style_text_color(heading, lv_color_hex(0x38BDF8), 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 10, 8);
   indoorLabel = lv_label_create(root);
   lv_label_set_long_mode(indoorLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(indoorLabel, SCREEN_W - 20);
+  lv_obj_set_width(indoorLabel, SCREEN_W - 24);
   lv_obj_set_height(indoorLabel, 174);
+  lv_obj_set_style_text_color(indoorLabel, lv_color_hex(0xCBD5E1), 0);
+  lv_obj_set_style_bg_color(indoorLabel, lv_color_hex(0x172033), 0);
+  lv_obj_set_style_bg_opa(indoorLabel, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_all(indoorLabel, 10, 0);
+  lv_obj_set_style_radius(indoorLabel, 12, 0);
   lv_obj_set_scrollbar_mode(indoorLabel, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_align(indoorLabel, LV_ALIGN_TOP_LEFT, 10, 34);
   updateIndoorStatus();
@@ -567,20 +585,22 @@ void showIndoor() {
 
 void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t callback) {
   lv_obj_t *button = lv_btn_create(root);
-  lv_obj_set_size(button, 142, 54);
+  lv_obj_set_size(button, 142, 58);
   lv_obj_set_pos(button, x, y);
-  lv_obj_set_style_radius(button, 16, 0);
-  lv_obj_set_style_bg_color(button, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_radius(button, 13, 0);
+  lv_obj_set_style_bg_color(button, lv_color_hex(0x172033), 0);
   lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(button, 1, 0);
-  lv_obj_set_style_border_color(button, lv_color_hex(0xE2E8F0), 0);
+  lv_obj_set_style_border_color(button, lv_color_hex(0x334155), 0);
   lv_obj_set_style_shadow_width(button, 8, 0);
-  lv_obj_set_style_shadow_opa(button, LV_OPA_20, 0);
+  lv_obj_set_style_shadow_color(button, lv_color_hex(0x020617), 0);
+  lv_obj_set_style_shadow_opa(button, LV_OPA_40, 0);
   lv_obj_t *label = lv_label_create(button);
-  String text = String(symbol) + "\n" + title;
+  String text = String(symbol) + "  " + title;
   lv_label_set_text(label, text.c_str());
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(label, lv_color_hex(0x1E293B), 0);
+  lv_obj_set_style_text_color(label, lv_color_hex(0xE2E8F0), 0);
   lv_obj_center(label);
   lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, nullptr);
 }
@@ -588,32 +608,48 @@ void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t cal
 void showHome() {
   currentPage = Page::HOME;
   resetPageObjects();
+  lv_obj_set_style_bg_color(root, lv_color_hex(0x0B1120), 0);
+  lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
+
+  lv_obj_t *brandMark = lv_obj_create(root);
+  lv_obj_set_size(brandMark, 34, 34);
+  lv_obj_align(brandMark, LV_ALIGN_TOP_LEFT, 10, 8);
+  lv_obj_set_style_radius(brandMark, 10, 0);
+  lv_obj_set_style_bg_color(brandMark, lv_color_hex(0x0E7490), 0);
+  lv_obj_set_style_border_width(brandMark, 0, 0);
+  lv_obj_t *mark = lv_label_create(brandMark);
+  lv_label_set_text(mark, LV_SYMBOL_HOME);
+  lv_obj_set_style_text_color(mark, lv_color_hex(0xF8FAFC), 0);
+  lv_obj_center(mark);
+
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Home");
-  lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(heading, lv_color_hex(0x0F172A), 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 8);
+  lv_label_set_text(heading, "OURHERITAGE");
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(heading, lv_color_hex(0xF8FAFC), 0);
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 52, 7);
 
   wifiLabel = lv_label_create(root);
-  lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -12, 12);
+  lv_obj_set_style_text_font(wifiLabel, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(wifiLabel, lv_color_hex(0x38BDF8), 0);
+  lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -10, 12);
   updateWifiLabel();
 
   lv_obj_t *subtitle = lv_label_create(root);
-  lv_label_set_text(subtitle, "OURHERITAGE  ·  YOUR HOME");
-  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_color(subtitle, lv_color_hex(0x64748B), 0);
-  lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 14, 34);
+  lv_label_set_text(subtitle, "HERITAGE CARE  /  SMART COMPANION");
+  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_color(subtitle, lv_color_hex(0x94A3B8), 0);
+  lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 12, 44);
 
-  tile("Outdoor", LV_SYMBOL_HOME, 12, 58, [](lv_event_t *) { showOutdoor(); });
-  tile("Music", LV_SYMBOL_AUDIO, 166, 58, [](lv_event_t *) { showMusicPlayer(); });
-  tile("Indoor", "MOCHI", 12, 124, [](lv_event_t *) { showIndoor(); });
-  tile("Settings", LV_SYMBOL_SETTINGS, 166, 124, [](lv_event_t *) { showSettings(); });
+  tile("OUTDOOR", LV_SYMBOL_GPS, 12, 66, [](lv_event_t *) { showOutdoor(); });
+  tile("MUSIC", LV_SYMBOL_AUDIO, 166, 66, [](lv_event_t *) { showMusicPlayer(); });
+  tile("INDOOR", LV_SYMBOL_HOME, 12, 132, [](lv_event_t *) { showIndoor(); });
+  tile("SETTINGS", LV_SYMBOL_SETTINGS, 166, 132, [](lv_event_t *) { showSettings(); });
 
   lv_obj_t *footer = lv_label_create(root);
-  lv_label_set_text(footer, "Local device | Wi-Fi when available");
+  lv_label_set_text(footer, "SYSTEM READY  •  LOCAL DEVICE");
   lv_obj_set_style_text_color(footer, lv_color_hex(0x64748B), 0);
-  lv_obj_set_style_text_font(footer, &lv_font_montserrat_12, 0);
-  lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -4);
+  lv_obj_set_style_text_font(footer, &lv_font_montserrat_10, 0);
+  lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -3);
 }
 
 void showMusicPlayer() {
