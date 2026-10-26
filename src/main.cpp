@@ -324,6 +324,9 @@ void showHome() {
 
 void showMusicPlayer() {
   currentPage = Page::MUSIC;
+  // Clear page-owned pointers before musicPlayerShow() deletes the home widgets.
+  // Otherwise loop() may update a stale wifiLabel and crash inside LVGL.
+  resetPageObjects();
   musicPlayerShow(root, [](lv_event_t *) { showHome(); });
 }
 void keyboardEvent(lv_event_t *event) {
