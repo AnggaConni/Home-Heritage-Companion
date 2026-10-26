@@ -508,14 +508,15 @@ void setup() {
   // pixels before LVGL takes ownership of the panel.
   Serial.println("Display test: RED");
   tft.fillScreen(TFT_RED);
-  delay(250);
+  delay(1500);
   Serial.println("Display test: GREEN");
   tft.fillScreen(TFT_GREEN);
-  delay(250);
+  delay(1500);
   Serial.println("Display test: BLUE");
   tft.fillScreen(TFT_BLUE);
-  delay(250);
+  delay(1500);
   tft.fillScreen(TFT_BLACK);
+  delay(500);
   Serial.println("Display: TFT_eSPI initialized; registering LVGL display");
 
   lv_init();
