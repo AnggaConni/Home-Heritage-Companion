@@ -51,6 +51,7 @@ uint32_t lastUiRefresh = 0;
 int16_t lastTouchX = 0;
 int16_t lastTouchY = 0;
 bool wifiConfigured = false;
+bool wifiScanInProgress = false;
 volatile bool wifiGotIpEvent = false;
 volatile bool wifiDisconnectedEvent = false;
 
@@ -346,38 +347,64 @@ void handleShowPassword(lv_event_t *event) {
 }
 
 void handleWifiScan(lv_event_t *) {
-  if (statusLabel) setStatus("Scanning nearby Wi-Fi networks...", 0x2563EB);
+  if (wifiScanInProgress) {
+    setStatus("Scan already in progress...", 0x2563EB);
+    return;
+  }
+
+  // ESP32-S3 Wi-Fi is 2.4 GHz only. Use asynchronous scanning so LVGL
+  // keeps running and the screen can report the actual scan result.
   WiFi.mode(WIFI_STA);
-  const int count = WiFi.scanNetworks(false, true);
+  WiFi.setSleep(false);
+  WiFi.scanDelete();
+  const int result = WiFi.scanNetworks(true, true);
+  if (result == WIFI_SCAN_FAILED) {
+    setStatus("Scan could not start. Retry.", 0xDC2626);
+    Serial.println("Wi-Fi scan: could not start");
+    return;
+  }
+  wifiScanInProgress = true;
+  setStatus("Scanning 2.4 GHz Wi-Fi...", 0x2563EB);
+  Serial.println("Wi-Fi scan started");
+}
+
+void finishWifiScan(int count) {
+  wifiScanInProgress = false;
+  if (!wifiDropdown) {
+    WiFi.scanDelete();
+    return;
+  }
+  if (count <= 0) {
+    lv_dropdown_set_options(wifiDropdown, "No networks found");
+    setStatus("No 2.4 GHz networks found. Retry near router.", 0xDC2626);
+    Serial.printf("Wi-Fi scan finished: %d\n", count);
+    WiFi.scanDelete();
+    return;
+  }
+
   String options;
+  int firstVisible = -1;
   for (int i = 0; i < count; ++i) {
     String name = WiFi.SSID(i);
     if (name.isEmpty()) name = "(Hidden network)";
-    // Dropdown options are newline-separated; remove embedded line breaks.
     name.replace("\n", " ");
     name.replace("\r", " ");
     if (options.length()) options += "\n";
     options += name;
+    if (firstVisible < 0 && WiFi.SSID(i).length() > 0) firstVisible = i;
+    Serial.printf("Wi-Fi %d: SSID='%s', RSSI=%d, channel=%d\n",
+                  i, WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i));
   }
-  if (!wifiDropdown) return;
-  if (count <= 0) {
-    lv_dropdown_set_options(wifiDropdown, "No networks found");
-    if (statusLabel) setStatus("No networks found. Try scanning again.", 0xDC2626);
-  } else {
-    lv_dropdown_set_options(wifiDropdown, options.c_str());
-    lv_dropdown_set_selected(wifiDropdown, 0);
-    if (ssidField) {
-      String selected = WiFi.SSID(0);
-      lv_textarea_set_text(ssidField, selected.c_str());
-    }
-    if (statusLabel) {
-      String msg = "Found " + String(count) + " networks. Choose one from the list.";
-      setStatus(msg.c_str(), 0x16A34A);
-    }
+  lv_dropdown_set_options(wifiDropdown, options.c_str());
+  lv_dropdown_set_selected(wifiDropdown, 0);
+  if (ssidField && firstVisible >= 0) {
+    String selected = WiFi.SSID(firstVisible);
+    lv_textarea_set_text(ssidField, selected.c_str());
   }
+  String msg = "Found " + String(count) + " networks (2.4 GHz).";
+  setStatus(msg.c_str(), 0x16A34A);
   WiFi.scanDelete();
 }
-
 void handleWifiSelect(lv_event_t *) {
   if (!wifiDropdown || !ssidField) return;
   char selected[33] = {0};
@@ -646,6 +673,11 @@ void setup() {
 void loop() {
   lv_timer_handler();
   pollLoRa();
+
+  if (wifiScanInProgress) {
+    const int scanResult = WiFi.scanComplete();
+    if (scanResult != WIFI_SCAN_RUNNING) finishWifiScan(scanResult);
+  }
 
   if (wifiGotIpEvent) {
     wifiGotIpEvent = false;
