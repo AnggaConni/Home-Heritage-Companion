@@ -293,7 +293,7 @@ void showHome() {
       "MP3 playback is not enabled yet. The ES8311 audio path and microSD/SDIO interface must be verified against the ES3C28P demo before enabling playback.",
       Page::MUSIC);
   });
-  tile("Environment", LV_SYMBOL_TINT, 12, 166, [](lv_event_t *) { showEnvironment(); });
+  tile("Environment", "ENV", 12, 166, [](lv_event_t *) { showEnvironment(); });
   tile("Settings", LV_SYMBOL_SETTINGS, 126, 166, [](lv_event_t *) { showSettings(); });
 
   lv_obj_t *footer = lv_label_create(root);
