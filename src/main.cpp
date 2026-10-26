@@ -6,6 +6,7 @@
 #include <lvgl.h>
 #include <ArduinoJson.h>
 #include <math.h>
+#include "music_player.h"
 
 // LCDWiki ES3C28P target notes:
 // - Display: ILI9341V, 240x320 SPI (pin mapping must be verified per board revision)
@@ -309,11 +310,7 @@ void showHome() {
   lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 14, 34);
 
   tile("Heritage", LV_SYMBOL_HOME, 12, 58, [](lv_event_t *) { showHeritage(); });
-  tile("Music", LV_SYMBOL_AUDIO, 166, 58, [](lv_event_t *) {
-    showInfoPage("Music Player",
-      "MP3 playback is not enabled yet. The ES8311 audio path and microSD/SDIO interface must be verified against the ES3C28P demo before enabling playback.",
-      Page::MUSIC);
-  });
+  tile("Music", LV_SYMBOL_AUDIO, 166, 58, [](lv_event_t *) { showMusicPlayer(); });
   tile("Environment", "ENV", 12, 124, [](lv_event_t *) { showEnvironment(); });
   tile("Settings", LV_SYMBOL_SETTINGS, 166, 124, [](lv_event_t *) { showSettings(); });
 
@@ -324,6 +321,10 @@ void showHome() {
   lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
 
+void showMusicPlayer() {
+  currentPage = Page::MUSIC;
+  musicPlayerShow(root, [](lv_event_t *) { showHome(); });
+}
 void keyboardEvent(lv_event_t *event) {
   const lv_event_code_t code = lv_event_get_code(event);
   if (code != LV_EVENT_READY && code != LV_EVENT_CANCEL) return;
@@ -684,12 +685,14 @@ void setup() {
   });
 
   setupLoRa();
+  musicPlayerInit();
   showHome();
   startSavedWifi();
 }
 
 void loop() {
   lv_timer_handler();
+  musicPlayerLoop();
   pollLoRa();
 
   if (wifiScanInProgress) {
