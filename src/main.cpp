@@ -636,7 +636,7 @@ void showHome() {
 
   lv_obj_t *subtitle = lv_label_create(root);
   lv_label_set_text(subtitle, "HERITAGE CARE  /  SMART COMPANION");
-  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(subtitle, lv_color_hex(0x94A3B8), 0);
   lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 12, 44);
 
@@ -648,7 +648,7 @@ void showHome() {
   lv_obj_t *footer = lv_label_create(root);
   lv_label_set_text(footer, "SYSTEM READY  •  LOCAL DEVICE");
   lv_obj_set_style_text_color(footer, lv_color_hex(0x64748B), 0);
-  lv_obj_set_style_text_font(footer, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_font(footer, &lv_font_montserrat_12, 0);
   lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -3);
 }
 
