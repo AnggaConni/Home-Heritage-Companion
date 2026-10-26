@@ -6,9 +6,11 @@ Firmware for the **LCDWiki ES3C28P** ESP32-S3 2.8-inch capacitive touchscreen.
 
 This is an early, hardware-unverified firmware baseline. It now contains working software paths (not simulated readings) for:
 
-- LVGL touchscreen dashboard and page navigation.
+- LVGL touchscreen dashboard with **Outdoor / OurHeritage**, **Music**, **Indoor / Mochi**, and **Settings** pages.
 - Wi-Fi station connection, on-screen SSID/password entry, local credential storage with ESP32 Preferences, and reconnect attempts.
-- Environment telemetry display backed by a real UART receive/parser path for newline-terminated JSON packets from a LoRa module in transparent mode.
+- Indoor / Mochi page with clearly labelled demo readings until LoRa pins are verified; live UART JSON telemetry parser is ready for verified wiring.
+- Outdoor / OurHeritage page querying live Open-Meteo Weather, Open-Meteo Air Quality, Open-Meteo Flood, USGS Earthquake, and NASA POWER APIs for a Jakarta demo location. Includes rule-based conservation recommendations based on returned indicators; unavailable APIs are shown as unavailable rather than inventing readings.
+- MP3/M4A player reads tracks from the `/Music` folder on microSD and calls `audio.loop()` continuously; main-loop delay is set to 1 ms to keep audio playback responsive.
 - Serial diagnostics at 115200 baud.
 
 Sensor values are shown only after a valid telemetry packet is received. No fake sensor readings are generated.
@@ -19,8 +21,8 @@ Sensor values are shown only after a valid telemetry packet is received. No fake
 - Display and touch GPIOs are based on the current working assumptions and must be verified against LCDWiki's board demo/documentation.
 - LoRa UART is intentionally disabled by default because the E220/E32 module wiring and free ESP32-S3 GPIOs have not been confirmed. Set `HHC_LORA_RX_PIN` and `HHC_LORA_TX_PIN` only after verifying wiring. The receiver currently expects transparent UART mode and newline-delimited JSON; see [docs/lora-protocol.md](docs/lora-protocol.md).
 - E220/E32 module mode pins, AUX behavior, frequency/channel, air data rate, addressing and regulatory settings still need to be matched between master and slave.
-- OurHeritage network content sync and offline content cache are not implemented yet. The Heritage page reports actual Wi-Fi status and clearly states this limitation.
-- MP3 playback is not implemented yet. Confirm the ES8311 audio path and microSD/SDIO interface against the official demo before adding playback.
+- Outdoor API display currently uses fixed Jakarta coordinates as a proof of concept. Site selection, location GPS, full web dashboard features, and persistent offline API cache are not yet ported to firmware.
+- Audio output depends on the ES8311 / amplifier configuration and a compatible microSD card. The playback loop has been tested by the project owner; retain the 1 ms main-loop delay unless audio is retested after future changes.
 - This repository is separate from the OurHeritage web application and does not copy its source.
 
 ## Hardware target to verify
