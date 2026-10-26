@@ -330,18 +330,23 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   volumeSlider = nullptr;
 
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, "Music Player");
+  lv_label_set_text(heading, LV_SYMBOL_AUDIO " NOW PLAYING");
+  lv_obj_set_style_text_color(heading, lv_color_hex(0x38BDF8), 0);
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
   lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 8);
 
   nowPlayingLabel = lv_label_create(root);
   lv_label_set_long_mode(nowPlayingLabel, LV_LABEL_LONG_DOT);
   lv_obj_set_width(nowPlayingLabel, 296);
+  lv_obj_set_style_text_color(nowPlayingLabel, lv_color_hex(0xF8FAFC), 0);
   lv_obj_align(nowPlayingLabel, LV_ALIGN_TOP_LEFT, 12, 38);
   refreshTitle();
 
   trackDropdown = lv_dropdown_create(root);
   lv_obj_set_size(trackDropdown, 296, 34);
+  lv_obj_set_style_bg_color(trackDropdown, lv_color_hex(0x172033), 0);
+  lv_obj_set_style_text_color(trackDropdown, lv_color_hex(0xF1F5F9), 0);
+  lv_obj_set_style_border_color(trackDropdown, lv_color_hex(0x334155), 0);
   lv_obj_align(trackDropdown, LV_ALIGN_TOP_LEFT, 12, 64);
   if (trackCount) {
     String options;
@@ -358,6 +363,8 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
 
   lv_obj_t *previous = lv_btn_create(root);
   lv_obj_set_size(previous, 54, 34);
+  lv_obj_set_style_radius(previous, 9, 0);
+  lv_obj_set_style_bg_color(previous, lv_color_hex(0x334155), 0);
   lv_obj_align(previous, LV_ALIGN_TOP_LEFT, 8, 108);
   lv_obj_t *previousLabel = lv_label_create(previous);
   lv_label_set_text(previousLabel, "Prev");
@@ -366,6 +373,8 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
 
   playButton = lv_btn_create(root);
   lv_obj_set_size(playButton, 68, 34);
+  lv_obj_set_style_radius(playButton, 9, 0);
+  lv_obj_set_style_bg_color(playButton, lv_color_hex(0x0E7490), 0);
   lv_obj_align(playButton, LV_ALIGN_TOP_LEFT, 68, 108);
   lv_obj_t *playLabel = lv_label_create(playButton);
   lv_label_set_text(playLabel, playing ? "Pause" : "Play");
@@ -374,6 +383,8 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
 
   lv_obj_t *next = lv_btn_create(root);
   lv_obj_set_size(next, 54, 34);
+  lv_obj_set_style_radius(next, 9, 0);
+  lv_obj_set_style_bg_color(next, lv_color_hex(0x334155), 0);
   lv_obj_align(next, LV_ALIGN_TOP_LEFT, 142, 108);
   lv_obj_t *nextLabel = lv_label_create(next);
   lv_label_set_text(nextLabel, "Next");
@@ -382,6 +393,7 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
 
   shuffleButton = lv_btn_create(root);
   lv_obj_set_size(shuffleButton, 104, 34);
+  lv_obj_set_style_radius(shuffleButton, 9, 0);
   lv_obj_align(shuffleButton, LV_ALIGN_TOP_RIGHT, -8, 108);
   lv_obj_t *shuffleLabel = lv_label_create(shuffleButton);
   lv_label_set_text(shuffleLabel, "Shuffle: OFF");
@@ -394,6 +406,8 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   lv_obj_align(volumeLabel, LV_ALIGN_TOP_LEFT, 12, 151);
   volumeSlider = lv_slider_create(root);
   lv_obj_set_size(volumeSlider, 212, 16);
+  lv_obj_set_style_bg_color(volumeSlider, lv_color_hex(0x334155), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(volumeSlider, lv_color_hex(0x38BDF8), LV_PART_INDICATOR);
   lv_obj_align(volumeSlider, LV_ALIGN_TOP_LEFT, 80, 151);
   lv_slider_set_range(volumeSlider, 0, 100);
   lv_slider_set_value(volumeSlider, volumePercent, LV_ANIM_OFF);
@@ -402,6 +416,7 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   statusLabel = lv_label_create(root);
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, 296);
+  lv_obj_set_style_text_color(statusLabel, lv_color_hex(0xCBD5E1), 0);
   lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 177);
   if (!codecReady) setStatus("ES8311 codec not detected.", 0xDC2626);
   else if (!sdReady) setStatus("microSD mount failed.", 0xDC2626);
@@ -410,6 +425,8 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
 
   lv_obj_t *back = lv_btn_create(root);
   lv_obj_set_size(back, 100, 36);
+  lv_obj_set_style_radius(back, 9, 0);
+  lv_obj_set_style_bg_color(back, lv_color_hex(0x334155), 0);
   lv_obj_align(back, LV_ALIGN_BOTTOM_LEFT, 12, -8);
   lv_obj_t *backLabel = lv_label_create(back);
   lv_label_set_text(backLabel, "Home");
