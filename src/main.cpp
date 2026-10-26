@@ -14,8 +14,9 @@
 //   LoRa UART stays disabled until RX/TX pins are verified and configured in platformio.ini.
 
 namespace {
-constexpr uint16_t SCREEN_W = 240;
-constexpr uint16_t SCREEN_H = 320;
+constexpr uint16_t SCREEN_W = 320;
+constexpr uint16_t SCREEN_H = 240;
+// Native FT6336G coordinates are portrait; convert them to landscape UI coordinates.
 constexpr int TOUCH_SDA = 16;
 constexpr int TOUCH_SCL = 15;
 constexpr int TOUCH_INT = 17;
@@ -100,8 +101,12 @@ bool readTouchPoint(uint16_t &x, uint16_t &y) {
   const uint8_t yLow = Wire.read();
   if (points == 0) return false;
 
-  x = ((xHigh & 0x0F) << 8) | xLow;
-  y = ((yHigh & 0x0F) << 8) | yLow;
+  const uint16_t rawX = ((xHigh & 0x0F) << 8) | xLow;
+  const uint16_t rawY = ((yHigh & 0x0F) << 8) | yLow;
+  // Match TFT_eSPI rotation 1 (320x240 landscape). If touch axes are reversed
+  // on a particular panel revision, only this transform needs calibration.
+  x = rawY;
+  y = (rawX < SCREEN_H) ? (SCREEN_H - 1 - rawX) : 0;
   return x < SCREEN_W && y < SCREEN_H;
 }
 
@@ -280,22 +285,22 @@ void showHome() {
   lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 10, 9);
 
   wifiLabel = lv_label_create(root);
-  lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -8, 14);
+  lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -8, 12);
   updateWifiLabel();
 
   lv_obj_t *subtitle = lv_label_create(root);
   lv_label_set_text(subtitle, "OURHERITAGE | HOME");
   lv_obj_set_style_text_color(subtitle, lv_color_hex(0xB45309), 0);
-  lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 12, 39);
+  lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 12, 37);
 
-  tile("Heritage", LV_SYMBOL_HOME, 12, 78, [](lv_event_t *) { showHeritage(); });
-  tile("Music", LV_SYMBOL_AUDIO, 126, 78, [](lv_event_t *) {
+  tile("Heritage", LV_SYMBOL_HOME, 12, 66, [](lv_event_t *) { showHeritage(); });
+  tile("Music", LV_SYMBOL_AUDIO, 166, 66, [](lv_event_t *) {
     showInfoPage("Music Player",
       "MP3 playback is not enabled yet. The ES8311 audio path and microSD/SDIO interface must be verified against the ES3C28P demo before enabling playback.",
       Page::MUSIC);
   });
-  tile("Environment", "ENV", 12, 166, [](lv_event_t *) { showEnvironment(); });
-  tile("Settings", LV_SYMBOL_SETTINGS, 126, 166, [](lv_event_t *) { showSettings(); });
+  tile("Environment", "ENV", 12, 150, [](lv_event_t *) { showEnvironment(); });
+  tile("Settings", LV_SYMBOL_SETTINGS, 166, 150, [](lv_event_t *) { showSettings(); });
 
   lv_obj_t *footer = lv_label_create(root);
   lv_label_set_text(footer, "Local device | Wi-Fi when available");
@@ -365,8 +370,8 @@ void showSettings() {
   lv_obj_add_event_cb(passwordField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
   lv_obj_t *connectButton = lv_btn_create(root);
-  lv_obj_set_size(connectButton, SCREEN_W - 24, 36);
-  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 144);
+  lv_obj_set_size(connectButton, SCREEN_W - 24, 34);
+  lv_obj_align(connectButton, LV_ALIGN_TOP_LEFT, 12, 138);
   lv_obj_t *connectLabel = lv_label_create(connectButton);
   lv_label_set_text(connectLabel, "Save & Connect");
   lv_obj_center(connectLabel);
@@ -376,10 +381,10 @@ void showSettings() {
   lv_label_set_text(statusLabel, "Wi-Fi credentials are stored locally on this device.");
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, SCREEN_W - 24);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 190);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 178);
 
   keyboard = lv_keyboard_create(root);
-  lv_obj_set_size(keyboard, SCREEN_W, 160);
+  lv_obj_set_size(keyboard, SCREEN_W, 90);
   lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(keyboard, keyboardEvent, LV_EVENT_ALL, nullptr);
@@ -501,7 +506,7 @@ void setup() {
   Serial.println("Display: backlight GPIO45 enabled; initializing TFT_eSPI");
 
   tft.begin();
-  tft.setRotation(0);
+  tft.setRotation(1);
   tft.setSwapBytes(true);
 
   // Short color-bar diagnostic: proves whether TFT_eSPI can actually draw
