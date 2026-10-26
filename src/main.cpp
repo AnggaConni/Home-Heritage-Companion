@@ -1,15 +1,21 @@
 #include <Arduino.h>
+#include <Wire.h>
 #include <WiFi.h>
 #include <Preferences.h>
 #include <TFT_eSPI.h>
 #include <lvgl.h>
 
-// Milestone 1 starter. Display pin/driver and FT6336G touch setup are NOT
-// validated for the LCDWiki ES3C28P revision yet. Do not flash until aligned
-// with the board's vendor configuration.
+// LCDWiki ES3C28P: ILI9341V TFT + FT6336G capacitive touch.
+// Pin mapping follows the LCDWiki board documentation. Build has not yet
+// been run in a local PlatformIO environment; check output before flashing.
 
 static constexpr uint16_t SCREEN_W = 240;
 static constexpr uint16_t SCREEN_H = 320;
+static constexpr int TOUCH_SDA = 16;
+static constexpr int TOUCH_SCL = 15;
+static constexpr int TOUCH_INT = 17;
+static constexpr int TOUCH_RST = 18;
+static constexpr uint8_t TOUCH_ADDR = 0x38;
 static constexpr uint32_t WIFI_RETRY_MS = 15000;
 
 TFT_eSPI tft;
@@ -23,11 +29,14 @@ static lv_obj_t *wifiLabel;
 static lv_obj_t *statusLabel;
 static lv_obj_t *ssidField;
 static lv_obj_t *passwordField;
+static lv_obj_t *keyboard;
 static uint32_t lastWifiTry = 0;
+static int16_t lastTouchX = 0;
+static int16_t lastTouchY = 0;
 
 void flushDisplay(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color) {
-  uint32_t w = area->x2 - area->x1 + 1;
-  uint32_t h = area->y2 - area->y1 + 1;
+  const uint32_t w = area->x2 - area->x1 + 1;
+  const uint32_t h = area->y2 - area->y1 + 1;
   tft.startWrite();
   tft.setAddrWindow(area->x1, area->y1, w, h);
   tft.pushColors(reinterpret_cast<uint16_t *>(color), w * h, true);
@@ -35,11 +44,37 @@ void flushDisplay(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color) 
   lv_disp_flush_ready(drv);
 }
 
-// Touch is a deliberate stub until the FT6336G driver and exact pins are verified.
+bool readTouchPoint(uint16_t &x, uint16_t &y) {
+  // FT6336G: register 0x02 gives touch point count; coordinates begin at 0x03.
+  Wire.beginTransmission(TOUCH_ADDR);
+  Wire.write(0x02);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(TOUCH_ADDR, static_cast<uint8_t>(5)) != 5) return false;
+  uint8_t points = Wire.read() & 0x0F;
+  uint8_t xh = Wire.read();
+  uint8_t xl = Wire.read();
+  uint8_t yh = Wire.read();
+  uint8_t yl = Wire.read();
+  if (points == 0) return false;
+  x = ((xh & 0x0F) << 8) | xl;
+  y = ((yh & 0x0F) << 8) | yl;
+  if (x >= SCREEN_W || y >= SCREEN_H) return false;
+  return true;
+}
+
 void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
-  data->state = LV_INDEV_STATE_REL;
-  data->point.x = 0;
-  data->point.y = 0;
+  uint16_t x = 0, y = 0;
+  if (readTouchPoint(x, y)) {
+    lastTouchX = x;
+    lastTouchY = y;
+    data->state = LV_INDEV_STATE_PR;
+    data->point.x = x;
+    data->point.y = y;
+  } else {
+    data->state = LV_INDEV_STATE_REL;
+    data->point.x = lastTouchX;
+    data->point.y = lastTouchY;
+  }
 }
 
 void setStatus(const char *text, uint32_t color = 0x334155) {
@@ -89,6 +124,27 @@ void showPage(const char *title, const char *body) {
 
 void showSettings();
 
+void keyboardReady(lv_event_t *event) {
+  lv_obj_t *kb = lv_event_get_target(event);
+  lv_obj_t *ta = lv_keyboard_get_textarea(kb);
+  if (lv_event_get_code(event) == LV_EVENT_READY) {
+    lv_keyboard_set_textarea(kb, nullptr);
+    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+    if (ta == passwordField) {
+      setStatus("Password entered. Tap Save & Connect.", 0x2563EB);
+    }
+  }
+}
+
+void textareaFocused(lv_event_t *event) {
+  lv_obj_t *ta = lv_event_get_target(event);
+  if (keyboard) {
+    lv_keyboard_set_textarea(keyboard, ta);
+    lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(keyboard);
+  }
+}
+
 void handleConnect(lv_event_t *) {
   const char *ssid = lv_textarea_get_text(ssidField);
   const char *password = lv_textarea_get_text(passwordField);
@@ -100,7 +156,6 @@ void handleConnect(lv_event_t *) {
   prefs.putString("ssid", ssid);
   prefs.putString("password", password);
   prefs.end();
-
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   lastWifiTry = millis();
@@ -120,6 +175,7 @@ void showSettings() {
   lv_textarea_set_placeholder_text(ssidField, "Wi-Fi SSID");
   lv_obj_set_size(ssidField, SCREEN_W - 24, 38);
   lv_obj_align(ssidField, LV_ALIGN_TOP_LEFT, 12, 48);
+  lv_obj_add_event_cb(ssidField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
   passwordField = lv_textarea_create(root);
   lv_textarea_set_one_line(passwordField, true);
@@ -127,10 +183,11 @@ void showSettings() {
   lv_textarea_set_placeholder_text(passwordField, "Wi-Fi password");
   lv_obj_set_size(passwordField, SCREEN_W - 24, 38);
   lv_obj_align(passwordField, LV_ALIGN_TOP_LEFT, 12, 96);
+  lv_obj_add_event_cb(passwordField, textareaFocused, LV_EVENT_FOCUSED, nullptr);
 
   lv_obj_t *connect = lv_btn_create(root);
-  lv_obj_set_size(connect, SCREEN_W - 24, 40);
-  lv_obj_align(connect, LV_ALIGN_TOP_LEFT, 12, 146);
+  lv_obj_set_size(connect, SCREEN_W - 24, 36);
+  lv_obj_align(connect, LV_ALIGN_TOP_LEFT, 12, 144);
   lv_obj_t *label = lv_label_create(connect);
   lv_label_set_text(label, "Save & Connect");
   lv_obj_center(label);
@@ -140,8 +197,19 @@ void showSettings() {
   lv_label_set_text(statusLabel, "Credentials stay on this device.");
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, SCREEN_W - 24);
-  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 198);
+  lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 190);
   makeBackButton();
+
+  keyboard = lv_keyboard_create(root);
+  lv_obj_set_size(keyboard, SCREEN_W, 160);
+  lv_obj_align(keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_event_cb(keyboard, keyboardReady, LV_EVENT_ALL, nullptr);
+
+  prefs.begin("hhc-wifi", true);
+  String savedSsid = prefs.getString("ssid", "");
+  prefs.end();
+  if (savedSsid.length()) lv_textarea_set_text(ssidField, savedSsid.c_str());
 }
 
 void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t cb) {
@@ -159,11 +227,11 @@ void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t cb)
 
 void showHome() {
   lv_obj_clean(root);
+  keyboard = nullptr;
   lv_obj_t *heading = lv_label_create(root);
   lv_label_set_text(heading, "Home Companion");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
   lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 10, 9);
-
   wifiLabel = lv_label_create(root);
   lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -8, 14);
   updateWifi();
@@ -205,9 +273,19 @@ void startSavedWifi() {
 void setup() {
   Serial.begin(115200);
   delay(200);
+
+  pinMode(TOUCH_RST, OUTPUT);
+  digitalWrite(TOUCH_RST, LOW);
+  delay(10);
+  digitalWrite(TOUCH_RST, HIGH);
+  delay(100);
+  Wire.begin(TOUCH_SDA, TOUCH_SCL);
+  pinMode(TOUCH_INT, INPUT);
+
   tft.begin();
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
+  tft.setSwapBytes(true);
 
   lv_init();
   lv_disp_draw_buf_init(&drawBuf, pixels, nullptr, SCREEN_W * 20);
@@ -243,7 +321,7 @@ void setup() {
 void loop() {
   lv_timer_handler();
   delay(5);
-  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiTry > 15000) {
+  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiTry > WIFI_RETRY_MS) {
     lastWifiTry = millis();
     prefs.begin("hhc-wifi", true);
     String ssid = prefs.getString("ssid", "");
