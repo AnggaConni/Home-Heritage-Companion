@@ -50,6 +50,13 @@ lv_obj_t *keyboard = nullptr;
 lv_obj_t *indoorLabel = nullptr;
 lv_obj_t *outdoorLabel = nullptr;
 String outdoorResult;
+String outdoorCards[4];
+const char *outdoorCardTitles[4] = {"Weather", "Air Quality", "Hazards", "Recommendations"};
+uint8_t outdoorCardIndex = 0;
+lv_obj_t *outdoorCard = nullptr;
+lv_obj_t *outdoorCardTitle = nullptr;
+lv_obj_t *outdoorCardBody = nullptr;
+lv_obj_t *outdoorPageIndicator = nullptr;
 volatile bool outdoorFetchRunning = false;
 volatile bool outdoorFetchDone = false;
 
@@ -325,8 +332,8 @@ void requestOutdoorData() {
   outdoorFetchRunning = true;
   outdoorFetchDone = false;
   outdoorResult = "OUTDOOR / OURHERITAGE\nFetching live data from Open-Meteo, USGS, and NASA POWER...";
-  if (outdoorLabel) lv_label_set_text(outdoorLabel, outdoorResult.c_str());
-  if (xTaskCreatePinnedToCore(outdoorFetchTask, "outdoor_api", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
+  if (outdoorCardBody) { buildOutdoorCards(); renderOutdoorCard(); }
+  if (xTaskCreatePinnedToCore(outdoorFetchTask, "outdoor_api", 10240, nullptr, 0, nullptr, 0) != pdPASS) {
     outdoorFetchRunning = false;
     outdoorResult = "Could not start API task. Please retry.";
     outdoorFetchDone = true;
@@ -334,8 +341,16 @@ void requestOutdoorData() {
 }
 
 void updateOutdoorStatus() {
-  if (outdoorLabel && outdoorFetchDone) {
-    lv_label_set_text(outdoorLabel, outdoorResult.c_str());
+  if (outdoorFetchDone && outdoorCardBody) {
+    static bool lastRendered = false;
+    static String lastResult;
+    if (!lastRendered || lastResult != outdoorResult) {
+      buildOutdoorCards();
+      renderOutdoorCard();
+      if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
+      lastResult = outdoorResult;
+      lastRendered = true;
+    }
   }
 }
 
@@ -396,29 +411,133 @@ void showInfoPage(const char *title, const char *body, Page page) {
   makeBackButton();
 }
 
+void renderOutdoorCard() {
+  if (!outdoorCardTitle || !outdoorCardBody || !outdoorPageIndicator) return;
+  lv_label_set_text(outdoorCardTitle, outdoorCardTitles[outdoorCardIndex]);
+  lv_label_set_text(outdoorCardBody, outdoorCards[outdoorCardIndex].length()
+    ? outdoorCards[outdoorCardIndex].c_str() : "Waiting for live data...");
+  char page[16];
+  snprintf(page, sizeof(page), "%u / 4", static_cast<unsigned>(outdoorCardIndex + 1));
+  lv_label_set_text(outdoorPageIndicator, page);
+}
+
+void buildOutdoorCards() {
+  for (String &card : outdoorCards) card = "";
+  outdoorCards[0] = "Jakarta • Live public APIs\n";
+  outdoorCards[1] = "Air quality indicators\n";
+  outdoorCards[2] = "Regional hazard context\n";
+  outdoorCards[3] = "Practical actions for heritage sites\n";
+  bool inRecommendations = false;
+  int start = 0;
+  while (start < outdoorResult.length()) {
+    int end = outdoorResult.indexOf('\n', start);
+    if (end < 0) end = outdoorResult.length();
+    String line = outdoorResult.substring(start, end);
+    line.trim();
+    if (line.indexOf("CONSERVATION RECOMMENDATIONS") >= 0) inRecommendations = true;
+    else if (line.startsWith("Sources:")) {
+      outdoorCards[3] += "\n" + line;
+      outdoorCards[2] += "\n" + line;
+    } else if (line.startsWith("Temp:") || line.startsWith("Rain now:") ||
+               line.startsWith("Outdoor /") || line.startsWith("OUTDOOR /") ||
+               line.startsWith("Jakarta |") || line.startsWith("Wi-Fi is offline") ||
+               line.startsWith("Connect in Settings") || line.startsWith("Fetching live") ||
+               line.startsWith("Could not start API")) {
+      outdoorCards[0] += line + "\n";
+    } else if (line.startsWith("PM2.5:")) {
+      outdoorCards[1] += line + "\n";
+    } else if (line.startsWith("Quakes") || line.startsWith("Flood river") ||
+               line.startsWith("NASA POWER")) {
+      outdoorCards[2] += line + "\n";
+    } else if (inRecommendations && line.startsWith("- ")) {
+      outdoorCards[3] += "• " + line.substring(2) + "\n";
+    } else if (line.indexOf("These are outdoor proxies") >= 0) {
+      outdoorCards[3] += "\nNote: " + line + "\n";
+    }
+    start = end + 1;
+  }
+  for (String &card : outdoorCards) card.trim();
+}
+
 void showOutdoor() {
   currentPage = Page::OUTDOOR;
   resetPageObjects();
+  outdoorCard = nullptr;
+  outdoorCardTitle = nullptr;
+  outdoorCardBody = nullptr;
+  outdoorPageIndicator = nullptr;
   lv_obj_t *heading = lv_label_create(root);
   lv_label_set_text(heading, "Outdoor / OurHeritage");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 8);
-  outdoorLabel = lv_label_create(root);
-  lv_label_set_long_mode(outdoorLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(outdoorLabel, SCREEN_W - 20);
-  lv_obj_set_height(outdoorLabel, 166);
-  lv_obj_set_scrollbar_mode(outdoorLabel, LV_SCROLLBAR_MODE_AUTO);
-  lv_obj_align(outdoorLabel, LV_ALIGN_TOP_LEFT, 10, 34);
-  lv_label_set_text(outdoorLabel, "Outdoor / OurHeritage\nPreparing live API data...");
+  lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 8, 5);
+
+  outdoorCard = lv_obj_create(root);
+  lv_obj_set_size(outdoorCard, 300, 142);
+  lv_obj_align(outdoorCard, LV_ALIGN_TOP_LEFT, 10, 30);
+  lv_obj_set_style_radius(outdoorCard, 12, 0);
+  lv_obj_set_style_bg_color(outdoorCard, lv_color_hex(0xF1F5F9), 0);
+  lv_obj_set_style_border_color(outdoorCard, lv_color_hex(0xCBD5E1), 0);
+  lv_obj_set_style_border_width(outdoorCard, 1, 0);
+  lv_obj_set_style_pad_all(outdoorCard, 10, 0);
+  lv_obj_set_scroll_dir(outdoorCard, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(outdoorCard, LV_SCROLLBAR_MODE_AUTO);
+
+  outdoorCardTitle = lv_label_create(outdoorCard);
+  lv_obj_set_style_text_font(outdoorCardTitle, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(outdoorCardTitle, lv_color_hex(0x0F766E), 0);
+  lv_obj_align(outdoorCardTitle, LV_ALIGN_TOP_LEFT, 0, 0);
+  outdoorCardBody = lv_label_create(outdoorCard);
+  lv_label_set_long_mode(outdoorCardBody, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(outdoorCardBody, 276);
+  lv_obj_align(outdoorCardBody, LV_ALIGN_TOP_LEFT, 0, 25);
+
+  lv_obj_t *prev = lv_btn_create(root);
+  lv_obj_set_size(prev, 62, 26);
+  lv_obj_align(prev, LV_ALIGN_TOP_LEFT, 72, 176);
+  lv_obj_t *prevLabel = lv_label_create(prev);
+  lv_label_set_text(prevLabel, LV_SYMBOL_LEFT " Prev");
+  lv_obj_center(prevLabel);
+  lv_obj_add_event_cb(prev, [](lv_event_t *) {
+    outdoorCardIndex = (outdoorCardIndex + 3) % 4;
+    renderOutdoorCard();
+    if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
+  }, LV_EVENT_CLICKED, nullptr);
+
+  outdoorPageIndicator = lv_label_create(root);
+  lv_obj_align(outdoorPageIndicator, LV_ALIGN_TOP_MID, 0, 182);
+
+  lv_obj_t *next = lv_btn_create(root);
+  lv_obj_set_size(next, 62, 26);
+  lv_obj_align(next, LV_ALIGN_TOP_RIGHT, -72, 176);
+  lv_obj_t *nextLabel = lv_label_create(next);
+  lv_label_set_text(nextLabel, "Next " LV_SYMBOL_RIGHT);
+  lv_obj_center(nextLabel);
+  lv_obj_add_event_cb(next, [](lv_event_t *) {
+    outdoorCardIndex = (outdoorCardIndex + 1) % 4;
+    renderOutdoorCard();
+    if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
+  }, LV_EVENT_CLICKED, nullptr);
+
+  lv_obj_t *home = lv_btn_create(root);
+  lv_obj_set_size(home, 78, 25);
+  lv_obj_align(home, LV_ALIGN_BOTTOM_LEFT, 8, -5);
+  lv_obj_t *homeLabel = lv_label_create(home);
+  lv_label_set_text(homeLabel, LV_SYMBOL_LEFT " Home");
+  lv_obj_center(homeLabel);
+  lv_obj_add_event_cb(home, [](lv_event_t *) { showHome(); }, LV_EVENT_CLICKED, nullptr);
+
   lv_obj_t *refresh = lv_btn_create(root);
-  lv_obj_set_size(refresh, 92, 30);
-  lv_obj_align(refresh, LV_ALIGN_BOTTOM_RIGHT, -12, -8);
+  lv_obj_set_size(refresh, 78, 25);
+  lv_obj_align(refresh, LV_ALIGN_BOTTOM_RIGHT, -8, -5);
   lv_obj_t *refreshLabel = lv_label_create(refresh);
-  lv_label_set_text(refreshLabel, "Refresh");
+  lv_label_set_text(refreshLabel, LV_SYMBOL_REFRESH " Refresh");
   lv_obj_center(refreshLabel);
   lv_obj_add_event_cb(refresh, [](lv_event_t *) { requestOutdoorData(); }, LV_EVENT_CLICKED, nullptr);
+
+  for (String &card : outdoorCards) card = "";
+  outdoorCards[0] = "Fetching live weather and conservation context...";
+  renderOutdoorCard();
   requestOutdoorData();
-  makeBackButton();
 }
 
 void showIndoor() {
