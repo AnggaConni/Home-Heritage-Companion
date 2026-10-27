@@ -27,6 +27,7 @@ bool audioReady = false;
 bool playing = false;
 bool paused = false;
 bool suppressTrackEvent = false;
+volatile bool trackEnded = false;
 uint8_t volumePercent = 40;
 
 lv_obj_t *statusLabel = nullptr;
@@ -121,6 +122,28 @@ void updateShuffleButton() {
       lv_color_hex(shuffleEnabled ? 0x047857 : 0x334155), 0);
 }
 
+void onTrackEOF(AudioPlayer &) {
+  // Keep the EOF callback lightweight; perform UI and file operations in musicPlayerLoop().
+  trackEnded = true;
+}
+
+void advanceTrackAfterEOF() {
+  if (!playing || paused || !trackEnded) return;
+  trackEnded = false;
+  if (!trackCount) {
+    playing = false;
+    setStatus("Playback ended; no tracks available.", 0xCBD5E1);
+    return;
+  }
+  if (shuffleEnabled && trackCount > 1) {
+    if (shufflePos >= trackCount - 1) rebuildShuffleOrder();
+    setSelectedTrack(shuffleOrder[shufflePos++]);
+  } else {
+    setSelectedTrack(selectedTrack + 1);
+  }
+  startSelected();
+}
+
 void startSelected() {
   if (!audioReady) { setStatus("Audio board initialization failed.", 0xDC2626); return; }
   if (!sdReady) { setStatus("microSD mount failed.", 0xDC2626); return; }
@@ -129,6 +152,7 @@ void startSelected() {
   // IMPORTANT: setPath() selects and activates the requested stream. Calling
   // begin() immediately afterward reinitializes the source and resets selection
   // to stream index 0, which made Next/Shuffle update only the UI title.
+  trackEnded = false;
   player.stop();
   const bool opened = player.setPath(tracks[selectedTrack].c_str());
   if (!opened) {
@@ -216,11 +240,16 @@ void musicPlayerInit() {
     // Independently check the card so the UI can report both failures accurately.
     sdReady = SD_MMC.cardType() != CARD_NONE;
   }
+  player.setAutoNext(false); // Our EOF handler advances sequentially or through the shuffle bag.
+  player.setOnEOFCallback(onTrackEOF);
   scanFolder();
 }
 
 void musicPlayerLoop() {
-  if (playing && !paused) player.copy();
+  if (playing && !paused) {
+    player.copy();
+    advanceTrackAfterEOF();
+  }
 }
 
 void musicPlayerStop() {
