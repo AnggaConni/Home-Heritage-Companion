@@ -50,9 +50,9 @@ lv_obj_t *keyboard = nullptr;
 lv_obj_t *indoorLabel = nullptr;
 lv_obj_t *outdoorLabel = nullptr;
 String outdoorResult;
-String outdoorCards[4];
+String outdoorCards[5];
 String outdoorRenderedResult;
-const char *outdoorCardTitles[4] = {"Weather", "Air Quality", "Hazards", "Recommendations"};
+const char *outdoorCardTitles[5] = {"Weather", "Air & Smoke", "Nearby Risks", "What You Can Do", "Data & Formulas"};
 uint8_t outdoorCardIndex = 0;
 lv_obj_t *outdoorCard = nullptr;
 lv_obj_t *outdoorCardTitle = nullptr;
@@ -447,16 +447,18 @@ void renderOutdoorCard() {
   lv_label_set_text(outdoorCardBody, outdoorCards[outdoorCardIndex].length()
     ? outdoorCards[outdoorCardIndex].c_str() : "Waiting for live data...");
   char page[16];
-  snprintf(page, sizeof(page), "%u / 4", static_cast<unsigned>(outdoorCardIndex + 1));
+  snprintf(page, sizeof(page), "%u / 5", static_cast<unsigned>(outdoorCardIndex + 1));
   lv_label_set_text(outdoorPageIndicator, page);
 }
 
 void buildOutdoorCards() {
   for (String &card : outdoorCards) card = "";
-  outdoorCards[0] = "Jakarta • Live public APIs\n";
-  outdoorCards[1] = "Air quality indicators\n";
-  outdoorCards[2] = "Regional hazard context\n";
-  outdoorCards[3] = "Practical actions for heritage sites\n";
+  outdoorCards[0] = "What is the weather like outside?\n";
+  outdoorCards[1] = "Air quality and possible smoke\n";
+  outdoorCards[2] = "Recent events in the region\n";
+  outdoorCards[3] = "Simple steps for home, work and heritage sites\n";
+  outdoorCards[4] = "How to read the numbers\n";
+
   bool inRecommendations = false;
   int start = 0;
   while (start < outdoorResult.length()) {
@@ -464,10 +466,11 @@ void buildOutdoorCards() {
     if (end < 0) end = outdoorResult.length();
     String line = outdoorResult.substring(start, end);
     line.trim();
-    if (line.indexOf("CONSERVATION RECOMMENDATIONS") >= 0) inRecommendations = true;
-    else if (line.startsWith("Sources:")) {
-      outdoorCards[3] += "\n" + line;
-      outdoorCards[2] += "\n" + line;
+
+    if (line.indexOf("CONSERVATION RECOMMENDATIONS") >= 0) {
+      inRecommendations = true;
+    } else if (line.startsWith("Sources:")) {
+      outdoorCards[4] += "\n" + line;
     } else if (line.startsWith("Temp:") || line.startsWith("Rain now:") ||
                line.startsWith("Outdoor /") || line.startsWith("OUTDOOR /") ||
                line.startsWith("Jakarta |") || line.startsWith("Wi-Fi is offline") ||
@@ -476,16 +479,53 @@ void buildOutdoorCards() {
       outdoorCards[0] += line + "\n";
     } else if (line.startsWith("PM2.5:")) {
       outdoorCards[1] += line + "\n";
+      float pm = NAN;
+      int p = line.indexOf(':');
+      int e = line.indexOf("ug/m3");
+      if (p >= 0 && e > p) pm = line.substring(p + 1, e).toFloat();
+      if (!isnan(pm)) {
+        outdoorCards[1] += pm >= 55.5f
+          ? "Air alert: unhealthy air is possible. Stay indoors if possible, close windows, and follow official local guidance.\n"
+          : pm >= 35.5f
+            ? "Air alert: reduce long or strenuous outdoor activity, especially for children, older adults and people with heart or lung conditions.\n"
+            : pm >= 12.1f
+              ? "Air note: sensitive people may want to limit prolonged outdoor activity if symptoms occur.\n"
+              : "No high PM2.5 signal in this forecast snapshot. Keep checking local conditions; smoke can change quickly.\n";
+      }
     } else if (line.startsWith("Quakes") || line.startsWith("Flood river") ||
                line.startsWith("NASA POWER")) {
       outdoorCards[2] += line + "\n";
     } else if (inRecommendations && line.startsWith("- ")) {
-      outdoorCards[3] += "• " + line.substring(2) + "\n";
+      String advice = line.substring(2);
+      if (advice.indexOf("PM2.5") >= 0) {
+        outdoorCards[3] += "• If the air looks or smells smoky: close doors and windows, use recirculation/clean air filtration if available, and avoid outdoor exercise. A well-fitting N95/KN95 can help reduce fine-particle exposure when you must go outside.\n";
+        outdoorCards[3] += "• Do not use an oxygen cylinder as a general smoke precaution; oxygen is for specific medical needs under professional guidance. Seek medical help for severe breathing difficulty.\n";
+      } else if (advice.indexOf("humidity") >= 0 || advice.indexOf("RH") >= 0) {
+        outdoorCards[3] += "• At home: check for dampness or mould and ventilate when outdoor air is clean. For heritage collections: monitor indoor humidity before changing climate controls.\n";
+      } else if (advice.indexOf("Rain") >= 0 || advice.indexOf("rain") >= 0 || advice.indexOf("flood") >= 0 || advice.indexOf("Flood") >= 0) {
+        outdoorCards[3] += "• Check roof leaks, drains and local flood notices. Move valuables and sensitive collections away from water entry points.\n";
+      } else if (advice.indexOf("earthquake") >= 0 || advice.indexOf("earthquakes") >= 0) {
+        outdoorCards[3] += "• After a nearby earthquake, watch for cracks or falling hazards and follow instructions from local authorities.\n";
+      } else if (advice.indexOf("UV") >= 0 || advice.indexOf("sunlight") >= 0) {
+        outdoorCards[3] += "• In strong sun, use shade and sun protection; reduce direct sunlight on sensitive objects and artworks.\n";
+      } else if (advice.indexOf("temperature") >= 0 || advice.indexOf("temperature") >= 0 || advice.indexOf("heat") >= 0) {
+        outdoorCards[3] += "• During hot weather, drink water, take breaks in a cool place, and check on people who are more vulnerable to heat.\n";
+      } else if (advice.indexOf("wind") >= 0 || advice.indexOf("Wind") >= 0) {
+        outdoorCards[3] += "• In strong winds, secure loose outdoor items and keep away from unstable trees or structures.\n";
+      } else {
+        outdoorCards[3] += "• " + advice + "\n";
+      }
     } else if (line.indexOf("These are outdoor proxies") >= 0) {
-      outdoorCards[3] += "\nNote: " + line + "\n";
+      outdoorCards[4] += "\nImportant: " + line + "\n";
     }
     start = end + 1;
   }
+
+  outdoorCards[4] += "\nPlain-language guide:\n";
+  outdoorCards[4] += "• PM2.5 = tiny particles in the air; higher values mean more fine-particle pollution.\n";
+  outdoorCards[4] += "• Weather and air-quality values are model estimates for the selected location, not a sensor inside your home.\n";
+  outdoorCards[4] += "• Smoke risk depends on pollution, wind, distance from fires, time outdoors and personal vulnerability. This screen does not yet detect fire hotspots directly.\n";
+  outdoorCards[4] += "• Hazard scores are simplified signals, not official warnings or medical advice. Check BMKG, local BPBD and health authorities for current instructions.\n";
   for (String &card : outdoorCards) card.trim();
 }
 
@@ -501,7 +541,7 @@ void showOutdoor() {
 
   lv_obj_t *heading = lv_label_create(root);
   lv_label_set_text(heading, LV_SYMBOL_GPS " OUTDOOR INTELLIGENCE");
-  lv_obj_set_style_text_font(heading, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(heading, lv_color_hex(0xE2E8F0), 0);
   lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 10, 5);
 
@@ -517,13 +557,14 @@ void showOutdoor() {
   lv_obj_set_scrollbar_mode(outdoorCard, LV_SCROLLBAR_MODE_AUTO);
 
   outdoorCardTitle = lv_label_create(outdoorCard);
-  lv_obj_set_style_text_font(outdoorCardTitle, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(outdoorCardTitle, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(outdoorCardTitle, lv_color_hex(0x38BDF8), 0);
   lv_obj_align(outdoorCardTitle, LV_ALIGN_TOP_LEFT, 0, 0);
   outdoorCardBody = lv_label_create(outdoorCard);
   lv_label_set_long_mode(outdoorCardBody, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(outdoorCardBody, 276);
   lv_obj_set_style_text_color(outdoorCardBody, lv_color_hex(0xCBD5E1), 0);
+  lv_obj_set_style_text_font(outdoorCardBody, &lv_font_montserrat_12, 0);
   lv_obj_align(outdoorCardBody, LV_ALIGN_TOP_LEFT, 0, 25);
 
   lv_obj_t *prev = lv_btn_create(root);
@@ -535,13 +576,14 @@ void showOutdoor() {
   lv_label_set_text(prevLabel, LV_SYMBOL_LEFT " Prev");
   lv_obj_center(prevLabel);
   lv_obj_add_event_cb(prev, [](lv_event_t *) {
-    outdoorCardIndex = (outdoorCardIndex + 3) % 4;
+    outdoorCardIndex = (outdoorCardIndex + 4) % 5;
     renderOutdoorCard();
     if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
   }, LV_EVENT_CLICKED, nullptr);
 
   outdoorPageIndicator = lv_label_create(root);
   lv_obj_set_style_text_color(outdoorPageIndicator, lv_color_hex(0x94A3B8), 0);
+  lv_obj_set_style_text_font(outdoorPageIndicator, &lv_font_montserrat_12, 0);
   lv_obj_align(outdoorPageIndicator, LV_ALIGN_TOP_MID, 0, 184);
 
   lv_obj_t *next = lv_btn_create(root);
@@ -553,7 +595,7 @@ void showOutdoor() {
   lv_label_set_text(nextLabel, "Next " LV_SYMBOL_RIGHT);
   lv_obj_center(nextLabel);
   lv_obj_add_event_cb(next, [](lv_event_t *) {
-    outdoorCardIndex = (outdoorCardIndex + 1) % 4;
+    outdoorCardIndex = (outdoorCardIndex + 1) % 5;
     renderOutdoorCard();
     if (outdoorCard) lv_obj_scroll_to_y(outdoorCard, 0, LV_ANIM_OFF);
   }, LV_EVENT_CLICKED, nullptr);
