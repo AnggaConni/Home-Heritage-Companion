@@ -37,6 +37,21 @@ Official references:
 - [LCDWiki Arduino demo instructions](https://www.lcdwiki.com/res/ES3C28P/2.8inch_ES3C28P_ES3N28P_arduino_Demo_Instructions.pdf)
 - [ES3C28P board-support reference](https://github.com/ngttai/esp32_s3_es3c28p)
 
+## NASA FIRMS hotspot lookup
+
+The Outdoor Intelligence page can query NASA FIRMS VIIRS near-real-time hotspot records within 100 km of the current demo coordinates.
+
+To configure the key locally:
+
+1. Create `include/config.h` on your computer (this path is ignored by Git).
+2. Add the following line, replacing the empty value with your own key:
+   `#define HHC_FIRMS_MAP_KEY "YOUR_MAP_KEY"`
+3. Build with PlatformIO.
+
+Never commit `include/config.h`. The repository intentionally contains no live MAP_KEY. **Important:** a key compiled into ESP32 firmware can be extracted from the firmware/device, so this prevents accidental publication in source control but does not make the key truly secret. For a distributed device, prefer a small server-side proxy with rate limits rather than embedding a reusable key in firmware. If a key has already been shared publicly or exposed unintentionally, rotate it through the provider.
+
+Hotspot records are satellite detections, not a direct measurement of smoke or a fire-confirmed emergency at the user's location. Combine them with air-quality indicators, wind context and official local advisories; never treat this feature as an official warning.
+
 ## Build
 
 1. Install Visual Studio Code and the PlatformIO IDE extension.
