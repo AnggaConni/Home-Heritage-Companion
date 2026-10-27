@@ -631,7 +631,9 @@ void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t cal
 }
 
 void showHome() {
-  applyResourceMode(Page::HOME);
+  // Finish building the Home UI before changing Wi-Fi state. On boot this
+  // lets LVGL render the menu before the radio starts connecting.
+  if (currentPage == Page::MUSIC) musicPlayerStop();
   currentPage = Page::HOME;
   resetPageObjects();
   lv_obj_set_style_bg_color(root, lv_color_hex(0x0B1120), 0);
@@ -676,6 +678,9 @@ void showHome() {
   lv_obj_set_style_text_color(footer, lv_color_hex(0x64748B), 0);
   lv_obj_set_style_text_font(footer, &lv_font_montserrat_12, 0);
   lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -3);
+
+  // Enable Wi-Fi only after the Home widgets are ready.
+  applyResourceMode(Page::HOME);
 }
 
 void showMusicPlayer() {
