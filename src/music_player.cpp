@@ -127,6 +127,8 @@ void onTrackEOF(AudioPlayer &) {
   trackEnded = true;
 }
 
+void startSelected();
+
 void advanceTrackAfterEOF() {
   if (!playing || paused || !trackEnded) return;
   trackEnded = false;
