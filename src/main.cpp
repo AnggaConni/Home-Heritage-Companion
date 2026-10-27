@@ -10,6 +10,12 @@
 #include <math.h>
 #include <time.h>
 #include "music_player.h"
+#if __has_include("config.h")
+  #include "config.h"
+#endif
+#ifndef HHC_FIRMS_MAP_KEY
+  #define HHC_FIRMS_MAP_KEY ""
+#endif
 
 // LCDWiki ES3C28P target notes:
 // - Display: ILI9341V, 240x320 SPI (pin mapping must be verified per board revision)
@@ -234,6 +240,42 @@ String fetchOutdoorApi(const String &url) {
 void buildOutdoorCards();
 void renderOutdoorCard();
 
+String fetchFirmsSummary(double latitude, double longitude, int radiusKm) {
+  if (strlen(HHC_FIRMS_MAP_KEY) == 0) return "FIRMS key not configured; hotspot check skipped.";
+  // FIRMS near-real-time VIIRS CSV. This is a hotspot proximity signal, not proof of smoke at the user's location.
+  const String url = String("https://firms.modaps.eosdis.nasa.gov/api/area/csv/") +
+    HHC_FIRMS_MAP_KEY + "/VIIRS_SNPP_NRT/" +
+    String(longitude, 4) + "," + String(latitude, 4) + "," + String(radiusKm) + "/1";
+  const String csv = fetchOutdoorApi(url);
+  if (csv.length() == 0) return "FIRMS hotspot data unavailable; check connection/key.";
+  int lines = 0;
+  int highConfidence = 0;
+  int maxConfidenceScore = -1;
+  int start = 0;
+  while (start < csv.length()) {
+    int end = csv.indexOf('\n', start);
+    if (end < 0) end = csv.length();
+    String line = csv.substring(start, end);
+    line.trim();
+    if (line.length() && !line.startsWith("latitude")) {
+      ++lines;
+      // CSV confidence is commonly low/nominal/high or a numeric score, depending on product.
+      if (line.indexOf(",high,") >= 0) ++highConfidence;
+      int lastComma = line.lastIndexOf(',');
+      (void)lastComma;
+      int confidenceComma = line.indexOf(",high,");
+      if (confidenceComma >= 0) maxConfidenceScore = 100;
+      else if (line.indexOf(",nominal,") >= 0 && maxConfidenceScore < 50) maxConfidenceScore = 50;
+      else if (line.indexOf(",low,") >= 0 && maxConfidenceScore < 25) maxConfidenceScore = 25;
+    }
+    start = end + 1;
+  }
+  if (lines == 0) return "FIRMS: no hotspots returned within " + String(radiusKm) + " km in the last 24 hours. This does not guarantee smoke-free air.";
+  return "FIRMS: " + String(lines) + " satellite hotspot record(s) within " + String(radiusKm) +
+    " km in the last 24 hours; high-confidence records: " + String(highConfidence) +
+    ". A hotspot is not a direct measurement of smoke at this location.";
+}
+
 String fetchOutdoorData() {
   String result;
   if (WiFi.status() != WL_CONNECTED) {
@@ -252,6 +294,7 @@ String fetchOutdoorData() {
     const String airJson = fetchOutdoorApi(
       "https://air-quality-api.open-meteo.com/v1/air-quality?" + coords +
       "&current=pm2_5,pm10,uv_index,ozone,nitrogen_dioxide&timezone=Asia%2FJakarta");
+    const String firmsSummary = fetchFirmsSummary(lat, lon, 100);
     const String quakeJson = fetchOutdoorApi(
       "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=-6.2088&longitude=106.8456&maxradiuskm=100&starttime=" + quakeStart + "&minmagnitude=2.5");
     const String floodJson = fetchOutdoorApi(
@@ -311,6 +354,7 @@ String fetchOutdoorData() {
     result += " | Wind: " + (isnan(wind) ? String("--") : String(wind, 1) + " km/h") + "\n";
     result += "PM2.5: " + (isnan(pm25) ? String("--") : String(pm25, 1) + " ug/m3");
     result += " | UV: " + (isnan(uv) ? String("--") : String(uv, 1)) + "\n";
+    result += firmsSummary + "\n";
     result += "Quakes M2.5+ within 100 km / 7 days: " + String(quakes < 0 ? 0 : quakes);
     result += " | Max M: " + (isnan(maxMagnitude) ? String("--") : String(maxMagnitude, 1)) + "\n";
     result += "Flood river discharge peak (7d): " + (isnan(dischargePeak) ? String("unavailable") : String(dischargePeak, 1) + " m3/s") + "\n";
@@ -333,7 +377,7 @@ String fetchOutdoorData() {
       if (isnan(rh) || isnan(pm25) || isnan(rain)) result += "- Some indicators are unavailable; check API connectivity and refresh.\n";
       result += "- These are outdoor proxies, not indoor sensor readings or official emergency alerts.\n";
     }
-    result += "\nSources: Open-Meteo Weather/Air/Flood, USGS, NASA POWER.";
+    result += "\nSources: Open-Meteo Weather/Air/Flood, NASA FIRMS VIIRS, USGS, NASA POWER.";
   }
   return result;
 }
