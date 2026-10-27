@@ -1103,9 +1103,8 @@ void setup() {
 }
 
 void loop() {
-  // MP3 decoding/I2S is serviced by the dedicated FreeRTOS audio task.
-  // Keep the UI loop free for LVGL flushes, touch input, and page logic.
   lv_timer_handler();
+  musicPlayerLoop();
   pollLoRa();
 
   if (wifiScanInProgress) {
