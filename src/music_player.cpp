@@ -11,7 +11,7 @@ namespace {
 constexpr int PA_ENABLE = 1;
 constexpr uint8_t MAX_TRACKS = 80;
 
-AudioSourceSDMMC source("/", "mp3");
+AudioSourceSDMMC source("/Music", ".mp3");
 AudioBoardStream kit(ESP32S3HosyondDisplay);
 MP3DecoderHelix decoder;
 AudioPlayer player(source, kit, decoder);
@@ -100,7 +100,6 @@ void startSelected() {
   if (!trackCount) { setStatus("No MP3 files in /Music.", 0xDC2626); return; }
   if (selectedTrack < 0) setSelectedTrack(0);
   player.stop();
-  source.begin(tracks[selectedTrack].c_str(), "mp3");
   if (!player.begin()) {
     playing = false;
     paused = false;
@@ -195,7 +194,11 @@ void musicPlayerPauseForFetch() {
   }
 }
 void musicPlayerResumeAfterFetch() {
-  if (playing && paused) startSelected();
+  if (playing && paused) {
+    paused = false;
+    player.play();
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
+  }
 }
 
 void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
