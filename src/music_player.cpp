@@ -211,6 +211,30 @@ void musicPlayerLoop() {
   audio.loop();
 }
 
+
+void musicPlayerStop() {
+  audio.stopSong();
+  playing = false;
+  paused = false;
+  if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
+}
+
+void musicPlayerPauseForFetch() {
+  if (playing && !paused) {
+    audio.pauseResume();
+    paused = true;
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
+  }
+}
+
+void musicPlayerResumeAfterFetch() {
+  if (playing && paused) {
+    audio.pauseResume();
+    paused = false;
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
+  }
+}
+
 void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   lv_obj_clean(root);
   statusLabel = nullptr;
