@@ -139,7 +139,7 @@ void startSelected() {
   }
   playing = true;
   paused = false;
-  if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
+  if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), LV_SYMBOL_PAUSE);
   refreshTitle();
   setStatus("Playing from microSD.", 0x16A34A);
   Serial.printf("[music] play: %s\n", tracks[selectedTrack].c_str());
@@ -157,7 +157,7 @@ void onPlay(lv_event_t *) {
     paused = !paused;
     if (paused) player.stop();
     else startSelected();
-    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), paused ? "Play" : "Pause");
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), paused ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE);
     setStatus(paused ? "Paused (restarts track on Play)." : "Playing from microSD.", 0x16A34A);
   } else {
     startSelected();
@@ -227,21 +227,21 @@ void musicPlayerStop() {
   if (playing) player.stop();
   playing = false;
   paused = false;
-  if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
+  if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), LV_SYMBOL_PLAY);
 }
 
 void musicPlayerPauseForFetch() {
   if (playing && !paused) {
     player.stop();
     paused = true;
-    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), LV_SYMBOL_PLAY);
   }
 }
 void musicPlayerResumeAfterFetch() {
   if (playing && paused) {
     paused = false;
     player.play();
-    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
+    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), LV_SYMBOL_PAUSE);
   }
 }
 
