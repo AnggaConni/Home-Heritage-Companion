@@ -106,6 +106,146 @@ See [docs/lora-protocol.md](docs/lora-protocol.md) for the packet schema and exa
 - This repository is separate from the OurHeritage web application and does not copy its source.
 - Sensor readings should only be treated as live measurements when they come from valid telemetry.
 
+
+## Planned extension: Mochi Early Warning Companion (Slave)
+
+<details>
+<summary><strong>Show the planned Mochi slave build guide (parts, wiring and assembly)</strong></summary>
+
+> **Status: planned documentation, not a verified wiring design.** The component list and GPIO assignments below are a working draft. Confirm the exact ESP32-S3 CAM board pinout, LoRa module variant, display breakout, power module and sensor voltage requirements before connecting power. Do not treat this draft as a validated schematic.
+
+### Project overview
+
+- **Difficulty:** Intermediate; suitable for beginner-to-intermediate makers with careful supervision.
+- **Estimated assembly time:** Approximately 1–2 hours, excluding debugging and firmware development.
+- **Build target:** One Mochi sensor/display slave node.
+- **Purpose:** Read environmental sensors, display Mochi status/expressions, and periodically send telemetry to the Home Heritage Companion master over a LoRa UART link.
+
+### Parts list
+
+| No. | Component | Specification / notes | Qty. |
+|---:|---|---|---:|
+| 1 | ESP32-S3 CAM board | Preferably N16R8 (16 MB flash, 8 MB PSRAM), USB Type-C; verify the exact board | 1 |
+| 2 | UART LoRa module | EBYTE E220-900T22D or E32-900T20D; select a legal, locally permitted frequency variant | 1 |
+| 3 | LoRa antenna | Antenna matched to the module frequency, with the correct connector; IPEX-to-SMA pigtail if required | 1 |
+| 4 | SPI TFT display | ST7735, 1.8-inch, 128 × 160 RGB | 1 |
+| 5 | GY-SHT31 sensor | Temperature and relative humidity, I²C | 1 |
+| 6 | SGP30 sensor | TVOC and eCO₂ estimates, I²C | 1 |
+| 7 | BH1750 sensor | Ambient light / lux, I²C | 1 |
+| 8 | GUVA-S12SD UV sensor | Analog output; check the breakout's supply and output-voltage range | 1 |
+| 9 | Battery charger and boost module | USB Type-C charging and regulated 5 V output; verify its cell configuration and protection features | 1 |
+| 10 | 18650 Li-ion cell(s) | Protected, reputable cells with compatible charger; capacity and cell count depend on the selected power module | 1–2 |
+| 11 | Main power switch | Rated for the expected current and voltage | 1 |
+| 12 | Tactile push buttons | Approximately 6 × 6 mm: expression and menu/status interaction | 2 |
+
+### Tools and accessories
+
+- Dupont jumper wires (female-to-female and male-to-female).
+- Small breadboard for initial tests (optional).
+- Perfboard, soldering iron and solder for a permanent assembly.
+- A compatible 18650 holder, if required by the selected power module.
+- Heat-shrink tubing and suitable insulation for exposed connections.
+- Multimeter for checking polarity, voltage and continuity before powering the circuit.
+
+### Critical safety checks
+
+1. **LoRa antenna:** Attach an antenna matched to the module and operating frequency before transmitting. Follow the module manufacturer's instructions; transmitting without a suitable antenna can damage the RF output stage.
+2. **Battery and charger:** Do not assume that cells must be wired in parallel or that any USB-C boost board supports two cells. Follow the exact power module's documentation for cell count, series/parallel topology, charging, protection and output current. Never connect a 2-cell series pack to an input intended for a single Li-ion cell.
+3. **Voltage compatibility:** Check every module's allowed supply voltage and logic levels. Do not connect a 5 V signal to an ESP32-S3 GPIO unless the interface is explicitly protected for it.
+4. **Power-off wiring:** Disconnect the battery and USB supply before changing wiring. Check for shorts and verify regulated output voltage with a multimeter before connecting the ESP32-S3.
+5. **Radio compliance:** Use a frequency and transmit settings permitted in your country. The example module names do not by themselves establish that 915 MHz is legal for every deployment.
+
+### Draft wiring map — verify before use
+
+The GPIO numbers below are **proposed assignments only**, not a confirmed pinout. Check the ESP32-S3 CAM board schematic and ensure that the pins are not already used by the camera, onboard peripherals, boot strapping, flash/PSRAM or other board circuitry.
+
+#### 1. Power
+
+- Battery holder → the charger/boost module's documented battery terminals.
+- Regulated module output (+) → the board's documented 5 V / VIN input, only if that input accepts the measured output.
+- Regulated module output (−) → GND.
+- Keep all grounds common where required by the interface design.
+- Do not connect a battery directly to the ESP32-S3 3.3 V pin.
+
+#### 2. LoRa UART
+
+| LoRa module pin | Proposed ESP32-S3 connection |
+|---|---|
+| TXD | GPIO 44 (UART RX) |
+| RXD | GPIO 43 (UART TX) |
+| GND | GND |
+| VCC | The voltage explicitly supported by the exact LoRa module variant |
+
+UART TX and RX are crossed: module TXD goes to MCU RX, and module RXD goes to MCU TX. Check the module datasheet for supply voltage, logic levels, AUX and mode-pin requirements before wiring.
+
+#### 3. ST7735 SPI display
+
+| Display pin | Proposed ESP32-S3 connection |
+|---|---|
+| VCC | 3.3 V, if supported by the exact display breakout |
+| GND | GND |
+| SCL / SCK | GPIO 12 |
+| SDA / MOSI | GPIO 11 |
+| CS | GPIO 10 |
+| DC / A0 | GPIO 14 |
+| RES / RST | GPIO 21 |
+| BLK / LED | The breakout's documented backlight supply |
+
+These are draft assignments. Confirm the breakout's pin labels, logic levels and backlight requirements.
+
+#### 4. I²C sensor array
+
+The SHT31, SGP30 and BH1750 can share an I²C bus if their addresses are compatible and their electrical requirements are met.
+
+| Signal | Proposed connection |
+|---|---|
+| SDA on all three sensors | GPIO 8 |
+| SCL on all three sensors | GPIO 9 |
+| VCC | 3.3 V, if supported by each breakout |
+| GND | Common GND |
+
+Check I²C addresses, pull-up resistors and sensor-board voltage compatibility before connecting all three modules.
+
+#### 5. Analog UV sensor
+
+| GUVA-S12SD signal | Proposed connection |
+|---|---|
+| VCC | The voltage specified for the exact sensor breakout |
+| GND | GND |
+| OUT | GPIO 1, only after confirming it is ADC-capable and the output stays within the ESP32-S3 ADC input range |
+
+Do not assume that a sensor breakout's analog output is safe for the MCU simply because its supply is compatible.
+
+#### 6. Interaction buttons
+
+| Button | Proposed connection |
+|---|---|
+| Expression button | GPIO 47 to GND |
+| Menu/status button | GPIO 48 to GND |
+
+If using `INPUT_PULLUP`, connect each button between its GPIO and GND, and implement debounce handling in firmware. Confirm both pins are available on the specific board.
+
+### Assembly and first-power-on checklist
+
+1. Read the documentation for the exact ESP32-S3 CAM board, LoRa module, display and power module.
+2. Assemble and test the power path separately. Measure the regulated output before connecting electronics.
+3. Connect the LoRa module and matched antenna with power disconnected.
+4. Wire the display and test it with a minimal ST7735 example before integrating the full firmware.
+5. Connect the I²C sensors and scan the bus to confirm that each expected sensor responds.
+6. Test the UV sensor's analog output and confirm the voltage is within the ESP32-S3 ADC input range.
+7. Connect the two buttons and test their GPIO states and debounce behavior.
+8. Integrate the sensors, display and UART firmware one subsystem at a time.
+9. Confirm that Mochi displays status correctly and sends valid newline-delimited JSON telemetry to the master.
+10. Test battery charging, protection, temperature and runtime under supervision before any unattended deployment.
+
+### Integration with the master
+
+The master-side LoRa receiver is a protocol foundation and expects transparent UART mode with one JSON object per line. The slave firmware, radio settings, packet schema and master receiver must agree before telemetry can be considered operational.
+
+See [LoRa protocol notes](docs/lora-protocol.md). The radio's frequency, channel, addressing, air data rate, mode pins and AUX behavior must be configured for the exact module and comply with local regulations.
+
+</details>
+
 ## Roadmap
 
 1. Verify board revision, display driver, touch orientation, flash/PSRAM and GPIO configuration.
