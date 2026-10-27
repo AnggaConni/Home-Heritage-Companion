@@ -1055,6 +1055,8 @@ void setup() {
   tft.begin();
   tft.setRotation(1);
   tft.setSwapBytes(true);
+  // ES3C28P ILI9341 panel requires inversion; otherwise RGB colors appear negative.
+  tft.invertDisplay(true);
 
   // Short color-bar diagnostic: proves whether TFT_eSPI can actually draw
   // pixels before LVGL takes ownership of the panel.
