@@ -3,6 +3,7 @@
 #include <lvgl.h>
 
 void musicPlayerInit();
+void musicPlayerStop();
 void musicPlayerLoop();
 void musicPlayerPauseForFetch();
 void musicPlayerResumeAfterFetch();
