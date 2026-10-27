@@ -1103,10 +1103,9 @@ void setup() {
 }
 
 void loop() {
-  // Keep the proven playback servicing pattern: service LVGL, then audio on
-  // every pass. The player is stopped when leaving Music mode.
+  // MP3 decoding/I2S is serviced by the dedicated FreeRTOS audio task.
+  // Keep the UI loop free for LVGL flushes, touch input, and page logic.
   lv_timer_handler();
-  musicPlayerLoop();
   pollLoRa();
 
   if (wifiScanInProgress) {
@@ -1156,9 +1155,11 @@ void loop() {
   // Low-frequency diagnostics let us compare memory during playback without
   // flooding Serial and adding avoidable work to the real-time audio loop.
   static uint32_t lastMemoryLog = 0;
-  if (now - lastMemoryLog >= 15000) {
+  // Avoid heap diagnostics during playback; heap queries/logging can add
+  // periodic jitter to the UI task even though audio now runs independently.
+  if (currentPage != Page::MUSIC && now - lastMemoryLog >= 15000) {
     lastMemoryLog = now;
-    printMemoryStatus(currentPage == Page::MUSIC ? "music" : "runtime");
+    printMemoryStatus("runtime");
   }
 
   if (currentPage != Page::MUSIC && currentPage != Page::INDOOR &&
