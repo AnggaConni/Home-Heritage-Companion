@@ -1098,8 +1098,9 @@ void setup() {
 }
 
 void loop() {
-  // Service the audio decoder first so display refreshes do not delay it.
-  musicPlayerLoop();
+  // Run the decoder only in Music mode; other pages should not spend time
+  // servicing an inactive player. Keep audio first while Music is active.
+  if (currentPage == Page::MUSIC) musicPlayerLoop();
   lv_timer_handler();
   pollLoRa();
 
