@@ -3,9 +3,6 @@
 #include <Wire.h>
 #include <SD_MMC.h>
 #include <Audio.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <freertos/task.h>
 
 namespace {
 constexpr uint8_t CODEC_ADDR = 0x18;
@@ -23,14 +20,6 @@ constexpr int SD_D3 = 47;
 constexpr size_t MAX_TRACKS = 80;
 
 Audio audio;
-enum class AudioCmd : uint8_t { PLAY, PAUSE_RESUME, STOP, VOLUME };
-struct AudioMsg {
-  AudioCmd cmd;
-  int value;
-  char path[192];
-};
-QueueHandle_t audioQueue = nullptr;
-TaskHandle_t audioTaskHandle = nullptr;
 String tracks[MAX_TRACKS];
 size_t trackCount = 0;
 int selectedTrack = -1;
@@ -231,46 +220,6 @@ void onShuffle(lv_event_t *) {
   updateShuffleButton();
 }
 
-void sendAudio(AudioCmd cmd, int value = 0, const char *path = nullptr) {
-  if (!audioQueue) {
-    Serial.println("[music] audio command dropped: task queue not ready");
-    return;
-  }
-  AudioMsg message = {};
-  message.cmd = cmd;
-  message.value = value;
-  if (path) strlcpy(message.path, path, sizeof(message.path));
-  if (xQueueSend(audioQueue, &message, pdMS_TO_TICKS(10)) != pdTRUE) {
-    Serial.printf("[music] audio command queue full (cmd=%u)\n", static_cast<unsigned>(cmd));
-  }
-}
-
-void audioTask(void *) {
-  AudioMsg message;
-  Serial.println("[music] dedicated audio task started on core 0");
-  for (;;) {
-    while (xQueueReceive(audioQueue, &message, 0) == pdTRUE) {
-      switch (message.cmd) {
-        case AudioCmd::PLAY:
-          audio.stopSong();
-          audio.connecttoFS(SD_MMC, message.path);
-          break;
-        case AudioCmd::PAUSE_RESUME:
-          audio.pauseResume();
-          break;
-        case AudioCmd::STOP:
-          audio.stopSong();
-          break;
-        case AudioCmd::VOLUME:
-          audio.setVolume(message.value);
-          break;
-      }
-    }
-    audio.loop();
-    vTaskDelay(1);
-  }
-}
-
 void startSelected() {
   if (!codecReady) { setStatus("ES8311 codec not detected.", 0xDC2626); return; }
   if (!sdReady) { setStatus("microSD mount failed.", 0xDC2626); return; }
@@ -278,7 +227,8 @@ void startSelected() {
   if (selectedTrack < 0 || selectedTrack >= static_cast<int>(trackCount)) selectedTrack = 0;
 
   const String path = tracks[selectedTrack];
-  sendAudio(AudioCmd::PLAY, 0, path.c_str());
+  audio.stopSong();
+  audio.connecttoFS(SD_MMC, path.c_str());
   playing = true;
   paused = false;
   if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
@@ -299,7 +249,7 @@ void onTrackChanged(lv_event_t *) {
 
 void onPlay(lv_event_t *) {
   if (playing) {
-    sendAudio(AudioCmd::PAUSE_RESUME);
+    audio.pauseResume();
     paused = !paused;
     if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), paused ? "Play" : "Pause");
     setStatus(paused ? "Paused" : "Playing from microSD", 0x16A34A);
@@ -324,7 +274,7 @@ void onPrevious(lv_event_t *) {
 
 void onVolume(lv_event_t *event) {
   volumePercent = static_cast<uint8_t>(lv_slider_get_value(lv_event_get_target(event)));
-  sendAudio(AudioCmd::VOLUME, map(volumePercent, 0, 100, 0, 21));
+  audio.setVolume(map(volumePercent, 0, 100, 0, 21));
 }
 
 void onVolumeReleased(lv_event_t *) {
@@ -349,23 +299,11 @@ void musicPlayerInit() {
   randomSeed(static_cast<unsigned long>(esp_random()));
   scanFolder();
 
-  audioQueue = xQueueCreate(8, sizeof(AudioMsg));
-  if (!audioQueue) {
-    Serial.println("[music] ERROR: failed to create audio command queue");
-    return;
-  }
-  const BaseType_t taskCreated = xTaskCreatePinnedToCore(
-    audioTask, "audio", 12288, nullptr, 3, &audioTaskHandle, 0);
-  if (taskCreated != pdPASS) {
-    Serial.println("[music] ERROR: failed to create audio task");
-    vQueueDelete(audioQueue);
-    audioQueue = nullptr;
-  }
 }
 
 void musicPlayerStop() {
   // Stop decoding and release the active stream before another page takes over.
-  sendAudio(AudioCmd::STOP);
+  audio.stopSong();
   playing = false;
   paused = false;
   pausedForFetch = false;
@@ -373,13 +311,13 @@ void musicPlayerStop() {
 }
 
 void musicPlayerLoop() {
-  // Audio is serviced by the dedicated FreeRTOS task.
+  audio.loop();
 }
 
 void musicPlayerPauseForFetch() {
   pausedForFetch = playing && !paused;
   if (pausedForFetch) {
-    sendAudio(AudioCmd::PAUSE_RESUME);
+    audio.pauseResume();
     paused = true;
     if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
     setStatus("Music paused while Outdoor data loads.", 0xD97706);
@@ -388,7 +326,7 @@ void musicPlayerPauseForFetch() {
 
 void musicPlayerResumeAfterFetch() {
   if (pausedForFetch && playing && paused) {
-    sendAudio(AudioCmd::PAUSE_RESUME);
+    audio.pauseResume();
     paused = false;
     if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
     setStatus("Outdoor data loaded. Music resumed.", 0x16A34A);
