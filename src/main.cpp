@@ -60,6 +60,7 @@ lv_obj_t *outdoorCardBody = nullptr;
 lv_obj_t *outdoorPageIndicator = nullptr;
 volatile bool outdoorFetchRunning = false;
 volatile bool outdoorFetchDone = false;
+volatile bool outdoorFetchPending = false;
 
 uint32_t lastWifiTry = 0;
 uint32_t lastUiRefresh = 0;
@@ -73,6 +74,9 @@ volatile uint8_t wifiDisconnectReason = 0;
 
 enum class Page : uint8_t { HOME, OUTDOOR, MUSIC, INDOOR, SETTINGS };
 Page currentPage = Page::HOME;
+
+void startSavedWifi();
+void applyResourceMode(Page target);
 
 struct Telemetry {
   bool received = false;
@@ -337,11 +341,19 @@ String fetchOutdoorData() {
 void requestOutdoorData() {
   if (outdoorFetchRunning) return;
   if (WiFi.status() != WL_CONNECTED) {
-    outdoorResult = "OUTDOOR / OURHERITAGE\\nWi-Fi is offline.\\nConnect in Settings, then return to Outdoor.";
-    outdoorFetchDone = true;
+    if (wifiConfigured) {
+      outdoorFetchPending = true;
+      outdoorFetchDone = false;
+      outdoorResult = "OUTDOOR / OURHERITAGE\\nConnecting to Wi-Fi before fetching live data...";
+    } else {
+      outdoorFetchPending = false;
+      outdoorResult = "OUTDOOR / OURHERITAGE\\nWi-Fi is not configured.\\nOpen Settings to connect, then return to Outdoor.";
+      outdoorFetchDone = true;
+    }
     if (outdoorCardBody) { buildOutdoorCards(); renderOutdoorCard(); }
     return;
   }
+  outdoorFetchPending = false;
 
   // Synchronous fetch: pause audio first so SD/network activity cannot starve playback.
   outdoorFetchRunning = true;
@@ -478,6 +490,7 @@ void buildOutdoorCards() {
 }
 
 void showOutdoor() {
+  applyResourceMode(Page::OUTDOOR);
   currentPage = Page::OUTDOOR;
   resetPageObjects();
   outdoorRenderedResult = "";
@@ -572,6 +585,7 @@ void showOutdoor() {
 }
 
 void showIndoor() {
+  applyResourceMode(Page::INDOOR);
   currentPage = Page::INDOOR;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
@@ -617,6 +631,7 @@ void tile(const char *title, const char *symbol, int x, int y, lv_event_cb_t cal
 }
 
 void showHome() {
+  applyResourceMode(Page::HOME);
   currentPage = Page::HOME;
   resetPageObjects();
   lv_obj_set_style_bg_color(root, lv_color_hex(0x0B1120), 0);
@@ -664,6 +679,7 @@ void showHome() {
 }
 
 void showMusicPlayer() {
+  applyResourceMode(Page::MUSIC);
   currentPage = Page::MUSIC;
   // Clear page-owned pointers before musicPlayerShow() deletes the home widgets.
   // Otherwise loop() may update a stale wifiLabel and crash inside LVGL.
@@ -798,6 +814,7 @@ void handleConnect(lv_event_t *) {
 }
 
 void showSettings() {
+  applyResourceMode(Page::SETTINGS);
   currentPage = Page::SETTINGS;
   resetPageObjects();
   lv_obj_t *heading = lv_label_create(root);
@@ -899,12 +916,40 @@ void startSavedWifi() {
   prefs.end();
   wifiConfigured = ssid.length() > 0;
   WiFi.mode(WIFI_STA);
-  if (wifiConfigured) {
+  WiFi.setSleep(false);
+  if (wifiConfigured && WiFi.status() != WL_CONNECTED) {
     WiFi.begin(ssid.c_str(), password.c_str());
     lastWifiTry = millis();
     Serial.printf("Wi-Fi: connecting to saved network '%s'\n", ssid.c_str());
-  } else {
+  } else if (!wifiConfigured) {
     Serial.println("Wi-Fi: not configured; open Settings to connect.");
+  }
+}
+
+void applyResourceMode(Page target) {
+  // Each page owns only the services it needs. Music gets the Wi-Fi radio
+  // entirely out of the way; Indoor is currently local/demo + future LoRa.
+  if (currentPage == Page::MUSIC && target != Page::MUSIC) {
+    musicPlayerStop();
+  }
+
+  if (target == Page::MUSIC || target == Page::INDOOR) {
+    wifiScanInProgress = false;
+    wifiGotIpEvent = false;
+    wifiDisconnectedEvent = false;
+    WiFi.scanDelete();
+    WiFi.disconnect(false, false); // preserve saved credentials
+    WiFi.mode(WIFI_OFF);
+    Serial.printf("[RESOURCE] mode=%s wifi=OFF audio=%s\\n",
+                  target == Page::MUSIC ? "MUSIC" : "INDOOR",
+                  target == Page::MUSIC ? "PRIORITY" : "STOPPED");
+  } else {
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    startSavedWifi();
+    Serial.printf("[RESOURCE] mode=%s wifi=ON audio=STOPPED\\n",
+                  target == Page::HOME ? "HOME" :
+                  target == Page::OUTDOOR ? "OUTDOOR" : "SETTINGS");
   }
 }
 
@@ -1071,6 +1116,7 @@ void loop() {
     setStatus(connected.c_str(), 0x16A34A);
     updateWifiLabel();
     updateOutdoorStatus();
+    if (currentPage == Page::OUTDOOR && outdoorFetchPending) requestOutdoorData();
   }
   if (wifiDisconnectedEvent) {
     wifiDisconnectedEvent = false;
@@ -1110,7 +1156,8 @@ void loop() {
     printMemoryStatus(currentPage == Page::MUSIC ? "music" : "runtime");
   }
 
-  if (wifiConfigured && WiFi.status() != WL_CONNECTED &&
+  if (currentPage != Page::MUSIC && currentPage != Page::INDOOR &&
+      wifiConfigured && WiFi.status() != WL_CONNECTED &&
       now - lastWifiTry >= WIFI_RETRY_MS) {
     lastWifiTry = now;
     WiFi.reconnect();
