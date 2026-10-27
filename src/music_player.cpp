@@ -23,21 +23,16 @@ Audio audio;
 String tracks[MAX_TRACKS];
 size_t trackCount = 0;
 int selectedTrack = -1;
-int shuffleOrder[MAX_TRACKS];
-size_t shufflePosition = 0;
-bool shuffleEnabled = false;
 bool sdReady = false;
 bool codecReady = false;
 bool playing = false;
 bool paused = false;
-bool pausedForFetch = false;
 uint8_t volumePercent = 40;
 
 lv_obj_t *statusLabel = nullptr;
 lv_obj_t *nowPlayingLabel = nullptr;
 lv_obj_t *trackDropdown = nullptr;
 lv_obj_t *playButton = nullptr;
-lv_obj_t *shuffleButton = nullptr;
 lv_obj_t *volumeSlider = nullptr;
 
 bool writeCodec(uint8_t reg, uint8_t value) {
@@ -137,97 +132,14 @@ void scanFolder() {
   Serial.printf("[music] %u supported tracks\n", static_cast<unsigned>(trackCount));
 }
 
-void shufflePlaylist(bool keepCurrentFirst) {
-  for (size_t i = 0; i < trackCount; ++i) shuffleOrder[i] = static_cast<int>(i);
-  // Fisher-Yates: randomize the upcoming playlist order.
-  for (size_t i = trackCount; i > 1; --i) {
-    const size_t j = static_cast<size_t>(random(static_cast<long>(i)));
-    const int tmp = shuffleOrder[i - 1];
-    shuffleOrder[i - 1] = shuffleOrder[j];
-    shuffleOrder[j] = tmp;
-  }
-  shufflePosition = 0;
-  if (keepCurrentFirst && selectedTrack >= 0 && selectedTrack < static_cast<int>(trackCount)) {
-    for (size_t i = 0; i < trackCount; ++i) {
-      if (shuffleOrder[i] == selectedTrack) {
-        const int tmp = shuffleOrder[0];
-        shuffleOrder[0] = shuffleOrder[i];
-        shuffleOrder[i] = tmp;
-        break;
-      }
-    }
-  }
-}
-
-void updateShuffleButton() {
-  if (!shuffleButton) return;
-  lv_obj_t *label = lv_obj_get_child(shuffleButton, 0);
-  if (label) lv_label_set_text(label, shuffleEnabled ? "Shuffle: ON" : "Shuffle: OFF");
-  lv_obj_set_style_bg_color(shuffleButton,
-    lv_color_hex(shuffleEnabled ? 0x15803D : 0x475569), LV_PART_MAIN);
-}
-
-int nextTrackIndex(bool forward) {
-  if (!trackCount) return -1;
-  if (!shuffleEnabled) {
-    return forward
-      ? (selectedTrack + 1) % static_cast<int>(trackCount)
-      : (selectedTrack <= 0 ? static_cast<int>(trackCount - 1) : selectedTrack - 1);
-  }
-
-  if (!trackCount) return -1;
-  bool found = false;
-  for (size_t i = 0; i < trackCount; ++i) {
-    if (shuffleOrder[i] == selectedTrack) {
-      shufflePosition = i;
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    shufflePlaylist(true);
-    return trackCount > 1 ? shuffleOrder[1] : shuffleOrder[0];
-  }
-
-  if (forward) {
-    if (shufflePosition + 1 >= trackCount) {
-      const int previousTrack = selectedTrack;
-      shufflePlaylist(false);
-      if (trackCount > 1 && shuffleOrder[0] == previousTrack) {
-        const int tmp = shuffleOrder[0];
-        shuffleOrder[0] = shuffleOrder[1];
-        shuffleOrder[1] = tmp;
-      }
-      shufflePosition = 0;
-    } else {
-      ++shufflePosition;
-    }
-  } else {
-    if (shufflePosition == 0) shufflePosition = trackCount - 1;
-    else --shufflePosition;
-  }
-  return shuffleOrder[shufflePosition];
-}
-
-void onShuffle(lv_event_t *) {
-  shuffleEnabled = !shuffleEnabled;
-  if (shuffleEnabled) {
-    shufflePlaylist(true);
-    setStatus("Shuffle enabled: upcoming tracks randomized.", 0x16A34A);
-  } else {
-    setStatus("Shuffle disabled: normal playlist order.");
-  }
-  updateShuffleButton();
-}
-
 void startSelected() {
   if (!codecReady) { setStatus("ES8311 codec not detected.", 0xDC2626); return; }
   if (!sdReady) { setStatus("microSD mount failed.", 0xDC2626); return; }
   if (!trackCount) { setStatus("No MP3/M4A files in /Music.", 0xDC2626); return; }
   if (selectedTrack < 0 || selectedTrack >= static_cast<int>(trackCount)) selectedTrack = 0;
 
-  const String path = tracks[selectedTrack];
   audio.stopSong();
+  const String path = tracks[selectedTrack];
   audio.connecttoFS(SD_MMC, path.c_str());
   playing = true;
   paused = false;
@@ -260,14 +172,14 @@ void onPlay(lv_event_t *) {
 
 void onNext(lv_event_t *) {
   if (!trackCount) { setStatus("No tracks in /Music.", 0xDC2626); return; }
-  selectedTrack = nextTrackIndex(true);
+  selectedTrack = (selectedTrack + 1) % static_cast<int>(trackCount);
   if (trackDropdown) lv_dropdown_set_selected(trackDropdown, selectedTrack);
   startSelected();
 }
 
 void onPrevious(lv_event_t *) {
   if (!trackCount) { setStatus("No tracks in /Music.", 0xDC2626); return; }
-  selectedTrack = nextTrackIndex(false);
+  selectedTrack = selectedTrack <= 0 ? static_cast<int>(trackCount - 1) : selectedTrack - 1;
   if (trackDropdown) lv_dropdown_set_selected(trackDropdown, selectedTrack);
   startSelected();
 }
@@ -275,9 +187,6 @@ void onPrevious(lv_event_t *) {
 void onVolume(lv_event_t *event) {
   volumePercent = static_cast<uint8_t>(lv_slider_get_value(lv_event_get_target(event)));
   audio.setVolume(map(volumePercent, 0, 100, 0, 21));
-}
-
-void onVolumeReleased(lv_event_t *) {
   char text[32];
   snprintf(text, sizeof(text), "Volume: %u%%", volumePercent);
   setStatus(text);
@@ -290,48 +199,16 @@ void musicPlayerInit() {
   if (!sdReady) sdReady = SD_MMC.begin("/sdcard", true);
   Serial.printf("[music] SD_MMC mount: %s\n", sdReady ? "OK" : "FAILED");
 
-  // Keep initialization compatible with the ESP32-audioI2S API resolved by PlatformIO.
   audio.setPinout(I2S_BCLK, I2S_LRCK, I2S_DOUT, I2S_PIN_NO_CHANGE, I2S_MCLK);
   codecReady = initCodec();
   pinMode(PA_ENABLE, OUTPUT);
   digitalWrite(PA_ENABLE, codecReady ? LOW : HIGH);
   audio.setVolume(map(volumePercent, 0, 100, 0, 21));
-  randomSeed(static_cast<unsigned long>(esp_random()));
   scanFolder();
-
-}
-
-void musicPlayerStop() {
-  // Stop decoding and release the active stream before another page takes over.
-  audio.stopSong();
-  playing = false;
-  paused = false;
-  pausedForFetch = false;
-  Serial.println("[music] stopped; resource mode released");
 }
 
 void musicPlayerLoop() {
   audio.loop();
-}
-
-void musicPlayerPauseForFetch() {
-  pausedForFetch = playing && !paused;
-  if (pausedForFetch) {
-    audio.pauseResume();
-    paused = true;
-    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Play");
-    setStatus("Music paused while Outdoor data loads.", 0xD97706);
-  }
-}
-
-void musicPlayerResumeAfterFetch() {
-  if (pausedForFetch && playing && paused) {
-    audio.pauseResume();
-    paused = false;
-    if (playButton) lv_label_set_text(lv_obj_get_child(playButton, 0), "Pause");
-    setStatus("Outdoor data loaded. Music resumed.", 0x16A34A);
-  }
-  pausedForFetch = false;
 }
 
 void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
@@ -340,27 +217,21 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   nowPlayingLabel = nullptr;
   trackDropdown = nullptr;
   playButton = nullptr;
-  shuffleButton = nullptr;
   volumeSlider = nullptr;
 
   lv_obj_t *heading = lv_label_create(root);
-  lv_label_set_text(heading, LV_SYMBOL_AUDIO " NOW PLAYING");
-  lv_obj_set_style_text_color(heading, lv_color_hex(0x38BDF8), 0);
+  lv_label_set_text(heading, "Music Player");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_20, 0);
   lv_obj_align(heading, LV_ALIGN_TOP_LEFT, 12, 8);
 
   nowPlayingLabel = lv_label_create(root);
   lv_label_set_long_mode(nowPlayingLabel, LV_LABEL_LONG_DOT);
   lv_obj_set_width(nowPlayingLabel, 296);
-  lv_obj_set_style_text_color(nowPlayingLabel, lv_color_hex(0xF8FAFC), 0);
   lv_obj_align(nowPlayingLabel, LV_ALIGN_TOP_LEFT, 12, 38);
   refreshTitle();
 
   trackDropdown = lv_dropdown_create(root);
   lv_obj_set_size(trackDropdown, 296, 34);
-  lv_obj_set_style_bg_color(trackDropdown, lv_color_hex(0x172033), 0);
-  lv_obj_set_style_text_color(trackDropdown, lv_color_hex(0xF1F5F9), 0);
-  lv_obj_set_style_border_color(trackDropdown, lv_color_hex(0x334155), 0);
   lv_obj_align(trackDropdown, LV_ALIGN_TOP_LEFT, 12, 64);
   if (trackCount) {
     String options;
@@ -376,62 +247,42 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   lv_obj_add_event_cb(trackDropdown, onTrackChanged, LV_EVENT_VALUE_CHANGED, nullptr);
 
   lv_obj_t *previous = lv_btn_create(root);
-  lv_obj_set_size(previous, 54, 34);
-  lv_obj_set_style_radius(previous, 9, 0);
-  lv_obj_set_style_bg_color(previous, lv_color_hex(0x334155), 0);
-  lv_obj_align(previous, LV_ALIGN_TOP_LEFT, 8, 108);
+  lv_obj_set_size(previous, 78, 34);
+  lv_obj_align(previous, LV_ALIGN_TOP_LEFT, 12, 108);
   lv_obj_t *previousLabel = lv_label_create(previous);
   lv_label_set_text(previousLabel, "Prev");
   lv_obj_center(previousLabel);
   lv_obj_add_event_cb(previous, onPrevious, LV_EVENT_CLICKED, nullptr);
 
   playButton = lv_btn_create(root);
-  lv_obj_set_size(playButton, 68, 34);
-  lv_obj_set_style_radius(playButton, 9, 0);
-  lv_obj_set_style_bg_color(playButton, lv_color_hex(0x0E7490), 0);
-  lv_obj_align(playButton, LV_ALIGN_TOP_LEFT, 68, 108);
+  lv_obj_set_size(playButton, 104, 34);
+  lv_obj_align(playButton, LV_ALIGN_TOP_MID, 0, 108);
   lv_obj_t *playLabel = lv_label_create(playButton);
   lv_label_set_text(playLabel, playing ? "Pause" : "Play");
   lv_obj_center(playLabel);
   lv_obj_add_event_cb(playButton, onPlay, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t *next = lv_btn_create(root);
-  lv_obj_set_size(next, 54, 34);
-  lv_obj_set_style_radius(next, 9, 0);
-  lv_obj_set_style_bg_color(next, lv_color_hex(0x334155), 0);
-  lv_obj_align(next, LV_ALIGN_TOP_LEFT, 142, 108);
+  lv_obj_set_size(next, 78, 34);
+  lv_obj_align(next, LV_ALIGN_TOP_RIGHT, -12, 108);
   lv_obj_t *nextLabel = lv_label_create(next);
   lv_label_set_text(nextLabel, "Next");
   lv_obj_center(nextLabel);
   lv_obj_add_event_cb(next, onNext, LV_EVENT_CLICKED, nullptr);
-
-  shuffleButton = lv_btn_create(root);
-  lv_obj_set_size(shuffleButton, 104, 34);
-  lv_obj_set_style_radius(shuffleButton, 9, 0);
-  lv_obj_align(shuffleButton, LV_ALIGN_TOP_RIGHT, -8, 108);
-  lv_obj_t *shuffleLabel = lv_label_create(shuffleButton);
-  lv_label_set_text(shuffleLabel, "Shuffle: OFF");
-  lv_obj_center(shuffleLabel);
-  lv_obj_add_event_cb(shuffleButton, onShuffle, LV_EVENT_CLICKED, nullptr);
-  updateShuffleButton();
 
   lv_obj_t *volumeLabel = lv_label_create(root);
   lv_label_set_text(volumeLabel, "Volume");
   lv_obj_align(volumeLabel, LV_ALIGN_TOP_LEFT, 12, 151);
   volumeSlider = lv_slider_create(root);
   lv_obj_set_size(volumeSlider, 212, 16);
-  lv_obj_set_style_bg_color(volumeSlider, lv_color_hex(0x334155), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(volumeSlider, lv_color_hex(0x38BDF8), LV_PART_INDICATOR);
   lv_obj_align(volumeSlider, LV_ALIGN_TOP_LEFT, 80, 151);
   lv_slider_set_range(volumeSlider, 0, 100);
   lv_slider_set_value(volumeSlider, volumePercent, LV_ANIM_OFF);
   lv_obj_add_event_cb(volumeSlider, onVolume, LV_EVENT_VALUE_CHANGED, nullptr);
-  lv_obj_add_event_cb(volumeSlider, onVolumeReleased, LV_EVENT_RELEASED, nullptr);
 
   statusLabel = lv_label_create(root);
   lv_label_set_long_mode(statusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(statusLabel, 296);
-  lv_obj_set_style_text_color(statusLabel, lv_color_hex(0xCBD5E1), 0);
   lv_obj_align(statusLabel, LV_ALIGN_TOP_LEFT, 12, 177);
   if (!codecReady) setStatus("ES8311 codec not detected.", 0xDC2626);
   else if (!sdReady) setStatus("microSD mount failed.", 0xDC2626);
@@ -440,8 +291,6 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
 
   lv_obj_t *back = lv_btn_create(root);
   lv_obj_set_size(back, 100, 36);
-  lv_obj_set_style_radius(back, 9, 0);
-  lv_obj_set_style_bg_color(back, lv_color_hex(0x334155), 0);
   lv_obj_align(back, LV_ALIGN_BOTTOM_LEFT, 12, -8);
   lv_obj_t *backLabel = lv_label_create(back);
   lv_label_set_text(backLabel, "Home");
