@@ -344,7 +344,7 @@ void requestOutdoorData() {
     if (wifiConfigured) {
       outdoorFetchPending = true;
       outdoorFetchDone = false;
-      outdoorResult = "OUTDOOR / OURHERITAGE\\nConnecting to Wi-Fi before fetching live data...";
+      outdoorResult = "OUTDOOR / OURHERITAGE\nConnecting to Wi-Fi before fetching live data...";
     } else {
       outdoorFetchPending = false;
       outdoorResult = "OUTDOOR / OURHERITAGE\\nWi-Fi is not configured.\\nOpen Settings to connect, then return to Outdoor.";
@@ -940,14 +940,14 @@ void applyResourceMode(Page target) {
     WiFi.scanDelete();
     WiFi.disconnect(false, false); // preserve saved credentials
     WiFi.mode(WIFI_OFF);
-    Serial.printf("[RESOURCE] mode=%s wifi=OFF audio=%s\\n",
+    Serial.printf("[RESOURCE] mode=%s wifi=OFF audio=%s\n",
                   target == Page::MUSIC ? "MUSIC" : "INDOOR",
                   target == Page::MUSIC ? "PRIORITY" : "STOPPED");
   } else {
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     startSavedWifi();
-    Serial.printf("[RESOURCE] mode=%s wifi=ON audio=STOPPED\\n",
+    Serial.printf("[RESOURCE] mode=%s wifi=ON audio=STOPPED\n",
                   target == Page::HOME ? "HOME" :
                   target == Page::OUTDOOR ? "OUTDOOR" : "SETTINGS");
   }
@@ -1095,7 +1095,6 @@ void setup() {
   setupLoRa();
   musicPlayerInit();
   showHome();
-  startSavedWifi();
 }
 
 void loop() {
