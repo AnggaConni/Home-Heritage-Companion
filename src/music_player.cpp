@@ -297,6 +297,16 @@ void musicPlayerInit() {
   scanFolder();
 }
 
+void musicPlayerStop() {
+  // Stop decoding and release the active stream before another page takes over.
+  audio.stopSong();
+  playing = false;
+  paused = false;
+  pausedForFetch = false;
+  selectedTrack = -1;
+  Serial.println("[music] stopped; resource mode released");
+}
+
 void musicPlayerLoop() {
   audio.loop();
 }
