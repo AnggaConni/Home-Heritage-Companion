@@ -1103,10 +1103,10 @@ void setup() {
 }
 
 void loop() {
-  // Run the decoder only in Music mode; other pages should not spend time
-  // servicing an inactive player. Keep audio first while Music is active.
-  if (currentPage == Page::MUSIC) musicPlayerLoop();
+  // Keep the proven playback servicing pattern: service LVGL, then audio on
+  // every pass. The player is stopped when leaving Music mode.
   lv_timer_handler();
+  musicPlayerLoop();
   pollLoRa();
 
   if (wifiScanInProgress) {
