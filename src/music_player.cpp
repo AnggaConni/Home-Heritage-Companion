@@ -116,7 +116,7 @@ void rebuildShuffleOrder() {
 void updateShuffleButton() {
   if (!shuffleButton) return;
   lv_obj_t *label = lv_obj_get_child(shuffleButton, 0);
-  if (label) lv_label_set_text(label, shuffleEnabled ? "SHUFFLE ON" : "SHUFFLE OFF");
+  if (label) lv_label_set_text(label, LV_SYMBOL_SHUFFLE);
   lv_obj_set_style_bg_color(shuffleButton,
       lv_color_hex(shuffleEnabled ? 0x047857 : 0x334155), 0);
 }
@@ -126,11 +126,12 @@ void startSelected() {
   if (!sdReady) { setStatus("microSD mount failed.", 0xDC2626); return; }
   if (!trackCount) { setStatus("No MP3 files in /Music.", 0xDC2626); return; }
   if (selectedTrack < 0) setSelectedTrack(0);
+  // IMPORTANT: setPath() selects and activates the requested stream. Calling
+  // begin() immediately afterward reinitializes the source and resets selection
+  // to stream index 0, which made Next/Shuffle update only the UI title.
   player.stop();
-  // Explicitly set the selected path. The UI scan and AudioSourceSDMMC's
-  // internal directory index are not guaranteed to have identical ordering.
-  player.setPath(tracks[selectedTrack].c_str());
-  if (!player.begin()) {
+  const bool opened = player.setPath(tracks[selectedTrack].c_str());
+  if (!opened) {
     playing = false;
     paused = false;
     setStatus("Could not open MP3 file.", 0xDC2626);
@@ -292,15 +293,19 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
   lv_obj_align(shuffleButton, LV_ALIGN_TOP_LEFT, 244, 82);
   lv_obj_set_style_radius(shuffleButton, 7, 0);
   lv_obj_t *shuffleLabel = lv_label_create(shuffleButton);
-  lv_label_set_text(shuffleLabel, shuffleEnabled ? "SHUFFLE ON" : "SHUFFLE OFF");
+  lv_label_set_text(shuffleLabel, LV_SYMBOL_SHUFFLE);
   lv_obj_center(shuffleLabel);
   lv_obj_add_event_cb(shuffleButton, onShuffle, LV_EVENT_CLICKED, nullptr);
   updateShuffleButton();
 
   const uint32_t buttonColors[3] = {0x334155, 0x0E7490, 0x334155};
-  const char *buttonTexts[3] = {"PREV", playing ? "PAUSE" : "PLAY", "NEXT"};
-  const int buttonWidths[3] = {78, 104, 78};
-  const int buttonXs[3] = {12, 108, 230};
+  const char *buttonTexts[3] = {
+    LV_SYMBOL_PREV,
+    playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY,
+    LV_SYMBOL_NEXT
+  };
+  const int buttonWidths[3] = {64, 64, 64};
+  const int buttonXs[3] = {28, 128, 228};
   lv_obj_t *buttons[3] = {};
   for (int i = 0; i < 3; ++i) {
     buttons[i] = lv_btn_create(root);
@@ -314,6 +319,9 @@ void musicPlayerShow(lv_obj_t *root, lv_event_cb_t backCallback) {
     lv_obj_center(label);
   }
   lv_obj_add_event_cb(buttons[0], onPrevious, LV_EVENT_CLICKED, nullptr);
+  for (int i = 0; i < 3; ++i) {
+    lv_obj_set_style_text_font(lv_obj_get_child(buttons[i], 0), &lv_font_montserrat_20, 0);
+  }
   playButton = buttons[1];
   lv_obj_add_event_cb(buttons[1], onPlay, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(buttons[2], onNext, LV_EVENT_CLICKED, nullptr);
