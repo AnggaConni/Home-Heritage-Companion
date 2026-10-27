@@ -303,7 +303,6 @@ void musicPlayerStop() {
   playing = false;
   paused = false;
   pausedForFetch = false;
-  selectedTrack = -1;
   Serial.println("[music] stopped; resource mode released");
 }
 
