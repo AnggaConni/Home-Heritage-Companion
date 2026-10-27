@@ -537,7 +537,7 @@ void buildOutdoorCards() {
               : "No high PM2.5 signal in this forecast snapshot. Keep checking local conditions; smoke can change quickly.\n";
       }
     } else if (line.startsWith("Quakes") || line.startsWith("Flood river") ||
-               line.startsWith("NASA POWER")) {
+               line.startsWith("NASA POWER") || line.startsWith("FIRMS:")) {
       outdoorCards[2] += line + "\n";
     } else if (inRecommendations && line.startsWith("- ")) {
       String advice = line.substring(2);
